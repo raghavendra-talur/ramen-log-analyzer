@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Log File Parser</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .upload-form {
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .column-toggles {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .validity-controls {
+            display: flex;
+            gap: 10px;
+            margin-right: 20px;
+        }
+        .filter-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: start;
+        }
+        .filter-input {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .add-filter-btn {
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .add-filter-btn:hover {
+            background-color: #45a049;
+        }
+        .active-filters {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+        }
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            background: #f8f9fa;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        .remove-filter {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+        }
+        .remove-filter:hover {
+            background: #c82333;
+        }
+        .files-container {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        .file-content {
+            background-color: #fff;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            height: 600px;
+            overflow: auto;
+        }
+        .file-header {
+            font-weight: bold;
+            padding: 10px;
+            background-color: #eee;
+            border-radius: 5px 5px 0 0;
+            margin-bottom: 10px;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .log-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: monospace;
+            font-size: 13px;
+            table-layout: auto;
+        }
+        .log-table th {
+            position: sticky;
+            top: 44px;
+            background: #fff;
+            padding: 8px;
+            text-align: left;
+            border-bottom: 2px solid #dee2e6;
+            z-index: 1;
+            white-space: nowrap;
+        }
+        .log-table td {
+            padding: 8px;
+            border-bottom: 1px solid #dee2e6;
+            vertical-align: top;
+            min-width: 100px;
+        }
+        .timestamp { color: #2196F3; white-space: nowrap; }
+        .level { font-weight: bold; white-space: nowrap; }
+        .level.INFO { color: #4CAF50; }
+        .level.WARN { color: #FF9800; }
+        .level.ERROR { color: #F44336; }
+        .level.DEBUG { color: #9E9E9E; }
+        .level.TRACE { color: #607D8B; }
+        .level.FATAL { color: #B71C1C; }
+        .logger { color: #673AB7; white-space: nowrap; }
+        .file { color: #795548; white-space: nowrap; }
+        .message { color: #000; }
+        .details { color: #558B2F; font-family: monospace; }
+        .stack-trace { color: #F44336; font-family: monospace; }
+        .log-row.valid { background-color: #f8f9fa; }
+        .log-row.invalid { background-color: #fff3f3; }
+        .log-row:hover { background-color: #f5f5f5; }
+        .error-message {
+            color: #F44336;
+            font-style: italic;
+            margin-top: 4px;
+        }
+        .column-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .column-toggle:hover {
+            background-color: #f5f5f5;
+        }
+        .column-toggle input {
+            margin: 0;
+        }
+        .hidden-column {
+            display: none;
+        }
+        [data-filtered="true"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-form">
+        <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+            <input type="file" name="files" id="fileInput" multiple required>
+        </form>
+    </div>
+
+    <div class="files-container">
+        {{if .Files}}
+            {{range .Files}}
+                <div class="file-content">
+                    <div class="file-header">{{.Name}}</div>
+                    <div class="controls">
+                        <div class="column-toggles">
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="timestamp" checked> Timestamp
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="level" checked> Level
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="logger" checked> Logger
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="file" checked> File Position
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="message" checked> Message
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="details" checked> Details
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" data-column="stack-trace" checked> Stack Trace
+                            </label>
+                        </div>
+                        <div class="validity-controls">
+                            <label class="column-toggle">
+                                <input type="checkbox" class="show-valid" checked> Show Valid
+                            </label>
+                            <label class="column-toggle">
+                                <input type="checkbox" class="show-invalid" checked> Show Invalid
+                            </label>
+                        </div>
+                        <div class="filter-controls">
+                            <button class="add-filter-btn">Add Filter</button>
+                            <div class="active-filters"></div>
+                        </div>
+                    </div>
+                    <table class="log-table">
+                        <thead>
+                            <tr>
+                                <th class="col-timestamp">Timestamp<div class="resizer"></div></th>
+                                <th class="col-level">Level<div class="resizer"></div></th>
+                                <th class="col-logger">Logger<div class="resizer"></div></th>
+                                <th class="col-file">File Position<div class="resizer"></div></th>
+                                <th class="col-message">Message<div class="resizer"></div></th>
+                                <th class="col-details">Details<div class="resizer"></div></th>
+                                <th class="col-stack-trace">Stack Trace<div class="resizer"></div></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {{range .LogEntries}}
+                                <tr class="log-row {{if .IsValid}}valid{{else}}invalid{{end}}"
+                                    data-timestamp="{{.Timestamp}}"
+                                    data-level="{{.Level}}"
+                                    data-logger="{{.Logger}}"
+                                    data-file="{{.FilePosition}}"
+                                    data-message="{{.Message}}"
+                                    data-details="{{.DetailsJSON}}"
+                                    data-stack-trace="{{range .StackTrace}}{{.}}
+{{end}}">
+                                    {{if .IsValid}}
+                                        <td class="timestamp col-timestamp">{{.Timestamp}}</td>
+                                        <td class="level {{.Level}} col-level">{{.Level}}</td>
+                                        <td class="logger col-logger">{{.Logger}}</td>
+                                        <td class="file col-file">{{.FilePosition}}</td>
+                                        <td class="message col-message">{{.Message}}</td>
+                                        <td class="details col-details">{{.DetailsJSON}}</td>
+                                        <td class="stack-trace col-stack-trace">{{range .StackTrace}}<div>{{.}}<br></div>{{end}}</td>
+                                    {{else}}
+                                        <td colspan="7">
+                                            <div>{{.Raw}}</div>
+                                            <div class="error-message">Error: {{.ParseError}}</div>
+                                        </td>
+                                    {{end}}
+                                </tr>
+                            {{end}}
+                        </tbody>
+                    </table>
+                </div>
+            {{end}}
+        {{else}}
+            <div class="file-content">
+                <p>No log files to display. Please choose one or more files.</p>
+            </div>
+        {{end}}
+    </div>
+
+    <script>
+        // Auto-submit form when files are selected
+        document.getElementById('fileInput').addEventListener('change', function() {
+            document.getElementById('uploadForm').submit();
+        });
+
+        // Column visibility toggles
+        document.querySelectorAll('.column-toggle input').forEach(toggle => {
+            toggle.addEventListener('change', function() {
+                const column = this.dataset.column;
+                const columnElements = document.querySelectorAll('.col-' + column);
+                columnElements.forEach(el => {
+                    el.classList.toggle('hidden-column', !this.checked);
+                });
+            });
+        });
+
+        // Filtering
+        document.querySelectorAll('.filter-controls').forEach(controls => {
+            const activeFilters = controls.querySelector('.active-filters');
+            const addFilterBtn = controls.querySelector('.add-filter-btn');
+            const filters = new Set();
+
+            function createFilterElement() {
+                const filterGroup = document.createElement('div');
+                filterGroup.className = 'filter-group';
+
+                const columnSelect = document.createElement('select');
+                columnSelect.className = 'filter-input filter-column';
+                columnSelect.innerHTML =
+                    '<option value="timestamp">Timestamp</option>' +
+                    '<option value="level">Level</option>' +
+                    '<option value="logger">Logger</option>' +
+                    '<option value="file">File Position</option>' +
+                    '<option value="message">Message</option>' +
+                    '<option value="details">Details</option>' +
+                    '<option value="stack-trace">Stack Trace</option>';
+
+                const valueInput = document.createElement('input');
+                valueInput.type = 'text';
+                valueInput.className = 'filter-input filter-value';
+                valueInput.placeholder = 'Filter value...';
+
+                const removeBtn = document.createElement('button');
+                removeBtn.className = 'remove-filter';
+                removeBtn.textContent = 'Remove';
+                removeBtn.onclick = () => {
+                    filterGroup.remove();
+                    filters.delete(filterGroup);
+                    applyFilters();
+                };
+
+                filterGroup.appendChild(columnSelect);
+                filterGroup.appendChild(valueInput);
+                filterGroup.appendChild(removeBtn);
+
+                // Add event listeners for filter changes
+                [columnSelect, valueInput].forEach(element => {
+                    element.addEventListener('input', () => {
+                        applyFilters();
+                    });
+                });
+
+                filters.add(filterGroup);
+                return filterGroup;
+            }
+
+            function applyFilters() {
+                const table = controls.closest('.file-content').querySelector('.log-table');
+                const rows = table.querySelectorAll('tbody tr');
+                const showValid = controls.closest('.file-content').querySelector('.show-valid').checked;
+                const showInvalid = controls.closest('.file-content').querySelector('.show-invalid').checked;
+
+                rows.forEach(row => {
+                    let shouldShow = true;
+
+                    // Check validity filter
+                    const isValid = row.classList.contains('valid');
+                    if ((isValid && !showValid) || (!isValid && !showInvalid)) {
+                        shouldShow = false;
+                    }
+
+                    // Check each filter condition
+                    if (shouldShow) {
+                        filters.forEach(filterGroup => {
+                            const column = filterGroup.querySelector('.filter-column').value;
+                            const filterValue = filterGroup.querySelector('.filter-value').value.toLowerCase();
+
+                            if (filterValue) {
+                                const cellValue = row.dataset[column].toLowerCase();
+                                if (!cellValue.includes(filterValue)) {
+                                    shouldShow = false;
+                                }
+                            }
+                        });
+                    }
+
+                    row.dataset.filtered = !shouldShow;
+                });
+            }
+
+            // Add event listeners for validity toggles
+            const validToggle = controls.closest('.file-content').querySelector('.show-valid');
+            const invalidToggle = controls.closest('.file-content').querySelector('.show-invalid');
+
+            validToggle.addEventListener('change', applyFilters);
+            invalidToggle.addEventListener('change', applyFilters);
+
+            // Add initial filter
+            addFilterBtn.addEventListener('click', () => {
+                const filterElement = createFilterElement();
+                activeFilters.appendChild(filterElement);
+                applyFilters();
+            });
+        });
+    </script>
+</body>
+</html>
