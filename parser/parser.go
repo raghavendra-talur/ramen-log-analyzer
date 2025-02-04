@@ -98,10 +98,18 @@ func (p *LogParser) ParseLine(line string) models.LogEntry {
 	finalParts := make([]string, 0)
 
 	var fieldPosAdjustment int
+	var isTimestampAlreadyFound = false
 	// Validate each part
 	for i, part := range parts {
 		fieldType := determineField(part)
 		expectedType := expectedFieldType(i + fieldPosAdjustment)
+		if fieldType == dateTimeField {
+			if isTimestampAlreadyFound {
+				// Ignore the second timestamp
+				continue
+			}
+			isTimestampAlreadyFound = true
+		}
 		if expectedType == messageField || expectedType == detailsJSONField {
 			finalParts = append(finalParts, part)
 			continue
