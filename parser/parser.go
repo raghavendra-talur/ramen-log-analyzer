@@ -12,12 +12,12 @@ import (
 
 // Log field regular expressions
 var (
-	dateTimeRegex     = regexp.MustCompile(`^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}(?:Z|[-+]\d{4})$`)
-	logLevelRegex     = regexp.MustCompile(`^(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)$`)
-	loggerRegex       = regexp.MustCompile(`^[a-zA-Z0-9_\.-]+$`)
-	filePositionRegex = regexp.MustCompile(`^.*:\d+$`)
-	messageRegex      = regexp.MustCompile(`^[A-Za-z0-9\s\-\/:()]+$`)
-	detailsJSONRegex  = regexp.MustCompile(`^{.*}$`)
+	dateTimeRegex     = regexp.MustCompile(`^\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3,9}Z)\s*`)
+	logLevelRegex     = regexp.MustCompile(`^\s*(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)\s*$`)
+	loggerRegex       = regexp.MustCompile(`^\s*[a-zA-Z0-9_\.-]+\s*$`)
+	filePositionRegex = regexp.MustCompile(`^\s*.*:\d+\s*$`)
+	messageRegex      = regexp.MustCompile(`^\s*[A-Za-z0-9\s\-\/:()]+\s*$`)
+	detailsJSONRegex  = regexp.MustCompile(`^\s*\{.*\}\s*$`)
 )
 
 // Field type constants
