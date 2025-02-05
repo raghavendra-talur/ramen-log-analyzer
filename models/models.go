@@ -15,15 +15,18 @@ type LogEntry struct {
 	ParseError   string
 	StackTrace   []string
 	Time         time.Time
-}
-
-// FileData represents log entries from a single file
-type FileData struct {
-	Name       string
-	LogEntries []LogEntry
+	Filename     string
 }
 
 // PageData represents the data passed to the HTML template
 type PageData struct {
-	Files []FileData
+	Name       string
+	LogEntries []LogEntry
+	HasPrev    bool
+	HasNext    bool
+	Page       int
+	NextPage   int
+	PrevPage   int
+	PageSize   int
+	TotalPages int
 }

@@ -22,7 +22,6 @@ func main() {
 
 	// Set up routes
 	http.HandleFunc("/", handler.HandleIndex)
-	http.HandleFunc("/upload", handler.HandleUpload)
 
 	// Start server
 	log.Printf("Server starting on %s...\n", PORT)

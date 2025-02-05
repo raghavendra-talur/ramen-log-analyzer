@@ -3,6 +3,7 @@ package parser
 import (
 	"bufio"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -82,15 +83,16 @@ func expectedFieldType(partID int) string {
 }
 
 // ParseLine parses a single line of log text
-func (p *LogParser) ParseLine(line string) models.LogEntry {
+func (p *LogParser) ParseLine(line, fileName string) models.LogEntry {
 	entry := models.LogEntry{
-		Raw:     line,
-		IsValid: true,
+		Filename: fileName,
+		IsValid:  true,
 	}
 
 	parts := strings.Split(line, "\t")
 	if len(parts) < 4 {
 		entry.IsValid = false
+		entry.Raw = line
 		entry.ParseError = fmt.Sprintf("Invalid number of fields in line %v, lenparts: %v, parts: %v", line, len(parts), parts)
 		return entry
 	}
@@ -114,6 +116,7 @@ func (p *LogParser) ParseLine(line string) models.LogEntry {
 				continue
 			}
 			entry.IsValid = false
+			entry.Raw = line
 			entry.ParseError = entry.ParseError + fmt.Sprintf("Field type mismatch at position %v, part: %v, expected type: %v, determined type: %v", string(rune('0'+i)), part, expectedType, fieldType)
 			continue
 		}
@@ -136,14 +139,16 @@ func (p *LogParser) ParseLine(line string) models.LogEntry {
 	return entry
 }
 
-// ParseReader parses log entries from an io.Reader
-func (p *LogParser) ParseReader(reader *bufio.Scanner) []models.LogEntry {
+// ParseFile parses log entries from a file
+func (p *LogParser) ParseFile(file *os.File, originalFileName string) ([]models.LogEntry, error) {
+	file.Seek(0, 0)
+	scanner := bufio.NewScanner(file)
 	var logEntries []models.LogEntry
 
-	for reader.Scan() {
-		line := reader.Text()
+	for scanner.Scan() {
+		line := scanner.Text()
 		if strings.TrimSpace(line) != "" {
-			entry := p.ParseLine(line)
+			entry := p.ParseLine(line, originalFileName)
 
 			if !entry.IsValid {
 				if p.errorHit {
@@ -164,5 +169,9 @@ func (p *LogParser) ParseReader(reader *bufio.Scanner) []models.LogEntry {
 		}
 	}
 
-	return logEntries
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading file: %v error: %v", originalFileName, err)
+	}
+
+	return logEntries, nil
 }
