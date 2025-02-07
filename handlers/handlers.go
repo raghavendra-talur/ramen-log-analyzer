@@ -136,7 +136,7 @@ func (h *Handler) HandleIndex(w http.ResponseWriter, r *http.Request) {
 		}
 		pageSize, _ := strconv.Atoi(pageSizeStr)
 		if pageSize < 1 {
-			pageSize = 100
+			pageSize = 10000
 		}
 
 		totalPages := len(globalPageData.LogEntries) / pageSize
