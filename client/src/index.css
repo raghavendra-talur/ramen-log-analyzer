@@ -642,3 +642,55 @@ body {
   overflow: visible;
   text-overflow: clip;
 }
+
+.upload-section-centered {
+  text-align: center;
+  padding: 60px 40px;
+  max-width: 600px;
+  margin: 100px auto;
+}
+
+.upload-section-centered h2 {
+  margin-bottom: 20px;
+}
+
+.results-card {
+  padding: 15px;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.load-new-form {
+  display: flex;
+  align-items: center;
+}
+
+.file-input-hidden {
+  display: none;
+}
+
+.load-new-btn {
+  background-color: #6c757d;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.load-new-btn:hover {
+  background-color: #5a6268;
+}
+
+.load-new-btn:disabled {
+  background-color: #adb5bd;
+  cursor: not-allowed;
+}

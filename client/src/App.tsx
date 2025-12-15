@@ -250,34 +250,37 @@ function App() {
     );
   };
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLoadNewFiles = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <div className="container">
-      <div className="card upload-section">
-        <h2>Select log files to analyze:</h2>
-        <form onSubmit={handleUpload}>
-          <input 
-            type="file" 
-            name="files" 
-            multiple 
-            className="file-input"
-            accept=".log,.txt"
-          />
-          <button type="submit" className="upload-btn" disabled={loading}>
-            {loading ? 'Processing...' : 'Upload & Analyze'}
-          </button>
-        </form>
-        {status && (
-          <div className={`status ${status.type}`}>{status.message}</div>
-        )}
-      </div>
-
-      <div className="card">
-        {!hasData ? (
-          <div className="empty-state">
-            No log files to display. Please choose one or more files.
-          </div>
-        ) : (
-          <>
+      {!hasData ? (
+        <div className="card upload-section upload-section-centered">
+          <h2>Select log files to analyze:</h2>
+          <form onSubmit={handleUpload}>
+            <input 
+              type="file" 
+              name="files" 
+              multiple 
+              className="file-input"
+              accept=".log,.txt"
+              ref={fileInputRef}
+            />
+            <button type="submit" className="upload-btn" disabled={loading}>
+              {loading ? 'Processing...' : 'Upload & Analyze'}
+            </button>
+          </form>
+          {status && (
+            <div className={`status ${status.type}`}>{status.message}</div>
+          )}
+        </div>
+      ) : (
+        <div className="card results-card">
+          <div className="results-header">
             <div className="stats">
               {Object.entries(levelStats).map(([level, count]) => (
                 <span 
@@ -296,8 +299,27 @@ function App() {
                 Filtered: {pagination?.totalEntries || 0}
               </span>
             </div>
+            <form onSubmit={handleUpload} className="load-new-form">
+              <input 
+                type="file" 
+                name="files" 
+                multiple 
+                className="file-input-hidden"
+                accept=".log,.txt"
+                ref={fileInputRef}
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    e.target.form?.requestSubmit();
+                  }
+                }}
+              />
+              <button type="button" className="load-new-btn" onClick={handleLoadNewFiles} disabled={loading}>
+                {loading ? 'Processing...' : 'Load New Files'}
+              </button>
+            </form>
+          </div>
 
-            <div className="columns-section">
+          <div className="columns-section">
               <div className="columns-header">
                 <h3>Columns</h3>
                 {visibleColumnCount < totalColumnCount && (
@@ -596,9 +618,8 @@ function App() {
                 <div className="no-results">No entries match your filters</div>
               )}
             </div>
-          </>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

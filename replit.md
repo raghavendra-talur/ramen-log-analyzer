@@ -31,14 +31,15 @@ Two workflows run simultaneously:
 ## Key Features
 
 - Multi-file upload (up to 1GB per file)
+- **Clean UI** - File upload section only shown on initial load; compact "Load New Files" button in results view
 - **Server-side filtering** - Filter queries processed on server for better performance
 - **Virtual scrolling** (react-window) - Only renders visible rows for smooth performance with large datasets
+- **Wrap Text toggle** - Switch between truncated (fast) and wrapped (full content) display modes
 - Field-specific filtering (Timestamp, Level, Logger, File Position, Message, Details, Source File)
 - Column show/hide toggles for all 7 columns
 - Log level statistics with clickable badges
 - **Improved pagination controls** - Page size selector (50/100/250/500/1000), page navigation, jump-to-page
 - Color-coded log levels (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
-- **Click-to-expand detail panel** - Click any row to see full details including stack traces
 - Show/hide invalid entries
 
 ## API Endpoints
