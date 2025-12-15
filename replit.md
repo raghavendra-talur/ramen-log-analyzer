@@ -39,6 +39,9 @@ Two workflows run simultaneously:
   - Collapsible groups showing first and last entries by default
   - Click to expand and see all entries in a group
   - Color-coded entries: green=first, red=last, yellow=middle
+- **Visualizations** (Chart.js) - When grouping is enabled, click "Show Charts" to display:
+  - Duration Distribution Histogram: Shows count of requests by duration buckets (0-100ms, 100-500ms, etc.)
+  - Request Durations Chart: Horizontal bar chart showing top 20 request durations, color-coded by error status
 - **Export Results** - Download filtered results as a text file
 - Field-specific filtering (Timestamp, Level, Logger, File Position, Message, Details, Source File)
 - Column show/hide toggles for all 7 columns
