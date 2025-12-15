@@ -1,6 +1,6 @@
 # Ramen Log Analyzer
 
-A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScript/React frontend and backend, with Go for log parsing.
+A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScript/React frontend and Node.js backend, with Go for log parsing.
 
 ## Architecture
 
@@ -18,6 +18,7 @@ A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScri
 │   └── src/index.ts     # Express server
 ├── client/              # React frontend
 │   ├── src/App.tsx      # Main React component
+│   ├── src/index.css    # Styles
 │   └── dist/            # Built frontend (served by Express)
 ```
 
@@ -30,11 +31,12 @@ Two workflows run simultaneously:
 ## Key Features
 
 - Multi-file upload (up to 1GB per file)
-- Log level filtering (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
-- Text search across logs
+- Field-specific filtering (Timestamp, Level, Logger, File Position, Message, Details, Source File)
+- Column show/hide toggles for all 7 columns
+- Log level statistics with clickable badges
 - Pagination for large files
-- Color-coded log levels
-- Stack trace display
+- Color-coded log levels (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
+- Stack trace display for errors
 - Show/hide invalid entries
 
 ## API Endpoints
@@ -42,3 +44,9 @@ Two workflows run simultaneously:
 - `POST /api/parse` - Upload and parse log files
 - `GET /api/entries` - Get parsed entries with pagination
 - `GET /api/health` - Health check for both services
+
+## Deployment
+
+Build command: `go mod download && go build -o ramen-log-analyzer . && cd client && npm install && npm run build && cd ../server && npm install && npm run build`
+
+Run command: `./ramen-log-analyzer & sleep 2 && node server/dist/index.js`

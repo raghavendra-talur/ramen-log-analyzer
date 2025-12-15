@@ -42,6 +42,7 @@ interface ColumnVisibility {
   filePosition: boolean;
   message: boolean;
   details: boolean;
+  filename: boolean;
 }
 
 function App() {
@@ -65,7 +66,8 @@ function App() {
     logger: true,
     filePosition: true,
     message: true,
-    details: true
+    details: true,
+    filename: true
   });
 
   const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
@@ -181,7 +183,8 @@ function App() {
       logger: true,
       filePosition: true,
       message: true,
-      details: true
+      details: true,
+      filename: true
     });
   };
 
@@ -189,6 +192,7 @@ function App() {
     filters.filePosition || filters.message || filters.details || filters.filename;
 
   const visibleColumnCount = Object.values(columns).filter(Boolean).length;
+  const totalColumnCount = 7;
 
   return (
     <div className="container">
@@ -240,7 +244,7 @@ function App() {
             <div className="columns-section">
               <div className="columns-header">
                 <h3>Columns</h3>
-                {visibleColumnCount < 6 && (
+                {visibleColumnCount < totalColumnCount && (
                   <button className="clear-btn" onClick={showAllColumns}>
                     Show All
                   </button>
@@ -294,6 +298,14 @@ function App() {
                     onChange={() => toggleColumn('details')}
                   />
                   Details
+                </label>
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.filename}
+                    onChange={() => toggleColumn('filename')}
+                  />
+                  Source File
                 </label>
               </div>
             </div>
@@ -416,6 +428,7 @@ function App() {
                     {columns.filePosition && <th>File</th>}
                     {columns.message && <th>Message</th>}
                     {columns.details && <th>Details</th>}
+                    {columns.filename && <th>Source File</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -439,6 +452,7 @@ function App() {
                         </td>
                       )}
                       {columns.details && <td className="details-json">{entry.DetailsJSON || '-'}</td>}
+                      {columns.filename && <td>{entry.Filename || '-'}</td>}
                     </tr>
                   ))}
                 </tbody>
