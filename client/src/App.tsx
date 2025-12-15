@@ -251,9 +251,62 @@ function App() {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
 
   const handleLoadNewFiles = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        pageSize: '100000',
+        timestamp: filters.timestamp,
+        level: filters.level,
+        logger: filters.logger,
+        filePosition: filters.filePosition,
+        message: filters.message,
+        details: filters.details,
+        filename: filters.filename,
+        showInvalid: filters.showInvalid.toString()
+      });
+      
+      const response = await fetch(`/api/entries?${params}`);
+      const data = await response.json();
+      const allEntries = data.entries || [];
+      
+      const lines = allEntries.map((entry: LogEntry) => {
+        if (!entry.IsValid) {
+          return entry.Raw || entry.ParseError || '';
+        }
+        const parts: string[] = [];
+        if (columns.timestamp && entry.Timestamp) parts.push(entry.Timestamp);
+        if (columns.level && entry.Level) parts.push(`[${entry.Level}]`);
+        if (columns.logger && entry.Logger) parts.push(entry.Logger);
+        if (columns.filePosition && entry.FilePosition) parts.push(entry.FilePosition);
+        if (columns.message && entry.Message) parts.push(entry.Message);
+        if (columns.details && entry.DetailsJSON) parts.push(entry.DetailsJSON);
+        if (columns.filename && entry.Filename) parts.push(`(${entry.Filename})`);
+        return parts.join(' | ');
+      });
+      
+      const content = lines.join('\n');
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `log-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -317,6 +370,14 @@ function App() {
                 {loading ? 'Processing...' : 'Load New Files'}
               </button>
             </form>
+            <button 
+              type="button" 
+              className="export-btn" 
+              onClick={handleExport} 
+              disabled={exporting || entries.length === 0}
+            >
+              {exporting ? 'Exporting...' : 'Export Results'}
+            </button>
           </div>
 
           <div className="columns-section">
