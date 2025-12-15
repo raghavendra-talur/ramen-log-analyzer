@@ -24,14 +24,30 @@ interface Pagination {
   hasPrev: boolean;
 }
 
+interface FieldFilters {
+  timestamp: string;
+  level: string;
+  logger: string;
+  filePosition: string;
+  message: string;
+  details: string;
+  filename: string;
+  showInvalid: boolean;
+}
+
 function App() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<FieldFilters>({
+    timestamp: '',
     level: '',
-    search: '',
+    logger: '',
+    filePosition: '',
+    message: '',
+    details: '',
+    filename: '',
     showInvalid: true
   });
 
@@ -87,16 +103,29 @@ function App() {
   const filteredEntries = useMemo(() => {
     return entries.filter(entry => {
       if (!filters.showInvalid && !entry.IsValid) return false;
-      if (filters.level && entry.Level !== filters.level) return false;
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        return (
-          entry.Message?.toLowerCase().includes(searchLower) ||
-          entry.Logger?.toLowerCase().includes(searchLower) ||
-          entry.FilePosition?.toLowerCase().includes(searchLower) ||
-          entry.DetailsJSON?.toLowerCase().includes(searchLower)
-        );
+      
+      if (filters.timestamp && !entry.Timestamp?.toLowerCase().includes(filters.timestamp.toLowerCase())) {
+        return false;
       }
+      if (filters.level && entry.Level !== filters.level) {
+        return false;
+      }
+      if (filters.logger && !entry.Logger?.toLowerCase().includes(filters.logger.toLowerCase())) {
+        return false;
+      }
+      if (filters.filePosition && !entry.FilePosition?.toLowerCase().includes(filters.filePosition.toLowerCase())) {
+        return false;
+      }
+      if (filters.message && !entry.Message?.toLowerCase().includes(filters.message.toLowerCase())) {
+        return false;
+      }
+      if (filters.details && !entry.DetailsJSON?.toLowerCase().includes(filters.details.toLowerCase())) {
+        return false;
+      }
+      if (filters.filename && !entry.Filename?.toLowerCase().includes(filters.filename.toLowerCase())) {
+        return false;
+      }
+      
       return true;
     });
   }, [entries, filters]);
@@ -110,6 +139,22 @@ function App() {
     });
     return stats;
   }, [entries]);
+
+  const clearFilters = () => {
+    setFilters({
+      timestamp: '',
+      level: '',
+      logger: '',
+      filePosition: '',
+      message: '',
+      details: '',
+      filename: '',
+      showInvalid: true
+    });
+  };
+
+  const hasActiveFilters = filters.timestamp || filters.level || filters.logger || 
+    filters.filePosition || filters.message || filters.details || filters.filename;
 
   return (
     <div className="container">
@@ -153,37 +198,117 @@ function App() {
               <span className="stat-badge" style={{ backgroundColor: '#e9ecef' }}>
                 Total: {entries.length}
               </span>
+              <span className="stat-badge" style={{ backgroundColor: '#d4edda', color: '#155724' }}>
+                Showing: {filteredEntries.length}
+              </span>
             </div>
 
-            <div className="filters">
-              <select 
-                className="filter-select"
-                value={filters.level}
-                onChange={e => setFilters(f => ({ ...f, level: e.target.value }))}
-              >
-                <option value="">All Levels</option>
-                <option value="TRACE">TRACE</option>
-                <option value="DEBUG">DEBUG</option>
-                <option value="INFO">INFO</option>
-                <option value="WARN">WARN</option>
-                <option value="ERROR">ERROR</option>
-                <option value="FATAL">FATAL</option>
-              </select>
-              <input
-                type="text"
-                className="filter-input"
-                placeholder="Search logs..."
-                value={filters.search}
-                onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-              />
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                <input
-                  type="checkbox"
-                  checked={filters.showInvalid}
-                  onChange={e => setFilters(f => ({ ...f, showInvalid: e.target.checked }))}
-                />
-                Show Invalid Entries
-              </label>
+            <div className="filters-section">
+              <div className="filters-header">
+                <h3>Filters</h3>
+                {hasActiveFilters && (
+                  <button className="clear-btn" onClick={clearFilters}>
+                    Clear All Filters
+                  </button>
+                )}
+              </div>
+              
+              <div className="filters-grid">
+                <div className="filter-group">
+                  <label>Timestamp</label>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Filter by timestamp..."
+                    value={filters.timestamp}
+                    onChange={e => setFilters(f => ({ ...f, timestamp: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="filter-group">
+                  <label>Level</label>
+                  <select 
+                    className="filter-select"
+                    value={filters.level}
+                    onChange={e => setFilters(f => ({ ...f, level: e.target.value }))}
+                  >
+                    <option value="">All Levels</option>
+                    <option value="TRACE">TRACE</option>
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARN">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                    <option value="FATAL">FATAL</option>
+                  </select>
+                </div>
+                
+                <div className="filter-group">
+                  <label>Logger</label>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Filter by logger..."
+                    value={filters.logger}
+                    onChange={e => setFilters(f => ({ ...f, logger: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="filter-group">
+                  <label>File Position</label>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Filter by file:line..."
+                    value={filters.filePosition}
+                    onChange={e => setFilters(f => ({ ...f, filePosition: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="filter-group">
+                  <label>Message</label>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Filter by message..."
+                    value={filters.message}
+                    onChange={e => setFilters(f => ({ ...f, message: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="filter-group">
+                  <label>Details (JSON)</label>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Filter by JSON details..."
+                    value={filters.details}
+                    onChange={e => setFilters(f => ({ ...f, details: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="filter-group">
+                  <label>Source File</label>
+                  <input
+                    type="text"
+                    className="filter-input"
+                    placeholder="Filter by source file..."
+                    value={filters.filename}
+                    onChange={e => setFilters(f => ({ ...f, filename: e.target.value }))}
+                  />
+                </div>
+                
+                <div className="filter-group">
+                  <label>&nbsp;</label>
+                  <label className="checkbox-label">
+                    <input
+                      type="checkbox"
+                      checked={filters.showInvalid}
+                      onChange={e => setFilters(f => ({ ...f, showInvalid: e.target.checked }))}
+                    />
+                    Show Invalid Entries
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div className="table-wrapper">
