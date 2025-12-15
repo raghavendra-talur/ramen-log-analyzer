@@ -61,6 +61,6 @@ Two workflows run simultaneously:
 
 ## Deployment
 
-Build command: `go mod download && go build -o ramen-log-analyzer . && cd client && npm install && npm run build && cd ../server && npm install && npm run build`
+Build command: `go mod tidy && go build -o main . && cd client && npm install && npm run build && cd ../server && npm install && npm run build`
 
-Run command: `./ramen-log-analyzer & sleep 2 && node server/dist/index.js`
+Run command: `./main & sleep 2 && node server/dist/index.js`
