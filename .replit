@@ -59,13 +59,5 @@ externalPort = 8080
 
 [deployment]
 deploymentTarget = "autoscale"
-run = [
-	"bash",
-	"-c",
-	"./ramen-log-analyzer && sleep 2 && node server/dist/index.js",
-]
-build = [
-	"bash",
-	"-c",
-	"go mod tidy && go build -o ramen-log-analyzer . && cd client && npm install && npm run build && cd ../server && npm install && npm run build",
-]
+run = ["bash", "-c", "./main & sleep 2 && node server/dist/index.js"]
+build = ["bash", "-c", "go mod tidy && go build -o main . && cd client && npm install && npm run build && cd ../server && npm install && npm run build"]
