@@ -367,8 +367,6 @@ body {
 .virtual-cell {
   padding: 8px;
   border-right: 1px solid #eee;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .virtual-cell:last-child {
@@ -402,24 +400,12 @@ body {
 .cell-message {
   flex: 1;
   min-width: 200px;
-  white-space: nowrap;
-}
-
-.cell-message:hover {
-  white-space: normal;
-  word-break: break-word;
 }
 
 .cell-details {
   width: 200px;
   min-width: 200px;
   flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.cell-details:hover {
-  white-space: normal;
-  word-break: break-word;
 }
 
 .cell-filename {

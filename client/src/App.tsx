@@ -76,7 +76,6 @@ function App() {
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(500);
-  const [selectedEntry, setSelectedEntry] = useState<LogEntry | null>(null);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -150,7 +149,6 @@ function App() {
       setEntries(data.entries || []);
       setPagination(data.pagination);
       setTotalUnfiltered(data.totalUnfiltered || 0);
-      setSelectedEntry(null);
     } catch (error) {
       console.error('Failed to fetch entries:', error);
     }
@@ -227,35 +225,26 @@ function App() {
     return acc;
   }, {} as Record<string, number>);
 
-  const truncate = (text: string | undefined, maxLen: number) => {
-    if (!text) return '-';
-    return text.length > maxLen ? text.substring(0, maxLen) + '...' : text;
-  };
-
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const entry = entries[index];
     if (!entry) return null;
 
-    const isSelected = selectedEntry === entry;
-    const hasStackTrace = entry.StackTrace && entry.StackTrace.length > 0;
-
     return (
       <div 
         style={style} 
-        className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''} ${isSelected ? 'selected' : ''}`}
-        onClick={() => setSelectedEntry(isSelected ? null : entry)}
+        className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
       >
-        {columns.timestamp && <div className="virtual-cell cell-timestamp">{truncate(entry.Timestamp, 25)}</div>}
-        {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong>{hasStackTrace && <span className="stack-indicator" title="Has stack trace"> +</span>}</div>}
-        {columns.logger && <div className="virtual-cell cell-logger">{truncate(entry.Logger, 30)}</div>}
-        {columns.filePosition && <div className="virtual-cell cell-filepos">{truncate(entry.FilePosition, 30)}</div>}
+        {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
+        {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
+        {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
+        {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
         {columns.message && (
           <div className="virtual-cell cell-message">
-            {truncate(entry.IsValid ? entry.Message : entry.Raw || entry.ParseError, 100)}
+            {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
           </div>
         )}
-        {columns.details && <div className="virtual-cell cell-details">{truncate(entry.DetailsJSON, 40)}</div>}
-        {columns.filename && <div className="virtual-cell cell-filename">{truncate(entry.Filename, 20)}</div>}
+        {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
+        {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
       </div>
     );
   };
@@ -575,59 +564,6 @@ function App() {
                 <div className="no-results">No entries match your filters</div>
               )}
             </div>
-
-            {selectedEntry && (
-              <div className="detail-panel">
-                <div className="detail-header">
-                  <h3>Entry Details</h3>
-                  <button className="close-btn" onClick={() => setSelectedEntry(null)}>×</button>
-                </div>
-                <div className="detail-content">
-                  <div className="detail-row">
-                    <span className="detail-label">Timestamp:</span>
-                    <span className="detail-value">{selectedEntry.Timestamp || '-'}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Level:</span>
-                    <span className={`detail-value level-${selectedEntry.Level}`}><strong>{selectedEntry.Level || '-'}</strong></span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Logger:</span>
-                    <span className="detail-value">{selectedEntry.Logger || '-'}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">File Position:</span>
-                    <span className="detail-value">{selectedEntry.FilePosition || '-'}</span>
-                  </div>
-                  <div className="detail-row">
-                    <span className="detail-label">Source File:</span>
-                    <span className="detail-value">{selectedEntry.Filename || '-'}</span>
-                  </div>
-                  <div className="detail-row full-width">
-                    <span className="detail-label">Message:</span>
-                    <pre className="detail-value message-value">{selectedEntry.IsValid ? selectedEntry.Message : selectedEntry.Raw || selectedEntry.ParseError}</pre>
-                  </div>
-                  {selectedEntry.DetailsJSON && (
-                    <div className="detail-row full-width">
-                      <span className="detail-label">Details (JSON):</span>
-                      <pre className="detail-value json-value">{selectedEntry.DetailsJSON}</pre>
-                    </div>
-                  )}
-                  {selectedEntry.StackTrace && selectedEntry.StackTrace.length > 0 && (
-                    <div className="detail-row full-width">
-                      <span className="detail-label">Stack Trace:</span>
-                      <pre className="detail-value stack-value">{selectedEntry.StackTrace.join('\n')}</pre>
-                    </div>
-                  )}
-                  {!selectedEntry.IsValid && selectedEntry.ParseError && (
-                    <div className="detail-row full-width">
-                      <span className="detail-label">Parse Error:</span>
-                      <span className="detail-value error-value">{selectedEntry.ParseError}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
           </>
         )}
       </div>
