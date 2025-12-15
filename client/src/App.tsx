@@ -1,5 +1,24 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { FixedSizeList as List } from 'react-window';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+import { Bar } from 'react-chartjs-2';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 interface LogEntry {
   Raw: string;
@@ -91,6 +110,37 @@ function App() {
   const [groups, setGroups] = useState<LogGroup[]>([]);
   const [ungroupedEntries, setUngroupedEntries] = useState<LogEntry[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [showVisualizations, setShowVisualizations] = useState(false);
+
+  const groupStats = useMemo(() => {
+    if (!groupingEnabled || groups.length === 0) return null;
+
+    const durations: { keyValue: string; duration: number; hasError: boolean; firstTime: number; lastTime: number }[] = [];
+    
+    for (const group of groups) {
+      const firstTime = new Date(group.firstEntry.Timestamp).getTime();
+      const lastTime = new Date(group.lastEntry.Timestamp).getTime();
+      const duration = lastTime - firstTime;
+      const hasError = group.allEntries.some(e => e.Level === 'ERROR' || e.Level === 'FATAL');
+      
+      if (!isNaN(firstTime) && !isNaN(lastTime)) {
+        durations.push({ keyValue: group.keyValue, duration, hasError, firstTime, lastTime });
+      }
+    }
+
+    durations.sort((a, b) => a.firstTime - b.firstTime);
+    
+    const durationBuckets = { '0-100ms': 0, '100-500ms': 0, '500ms-1s': 0, '1-5s': 0, '5s+': 0 };
+    for (const d of durations) {
+      if (d.duration <= 100) durationBuckets['0-100ms']++;
+      else if (d.duration <= 500) durationBuckets['100-500ms']++;
+      else if (d.duration <= 1000) durationBuckets['500ms-1s']++;
+      else if (d.duration <= 5000) durationBuckets['1-5s']++;
+      else durationBuckets['5s+']++;
+    }
+
+    return { durations, durationBuckets };
+  }, [groups, groupingEnabled]);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -538,14 +588,89 @@ function App() {
                 )}
               </div>
               {groupingEnabled && groups.length > 0 && (
-                <div className="grouping-stats">
-                  <span className="stat-badge" style={{ backgroundColor: '#e3f2fd' }}>
-                    {groups.length} groups
-                  </span>
-                  <span className="stat-badge" style={{ backgroundColor: '#fff3e0' }}>
-                    {ungroupedEntries.length} ungrouped
-                  </span>
-                </div>
+                <>
+                  <div className="grouping-stats">
+                    <span className="stat-badge" style={{ backgroundColor: '#e3f2fd' }}>
+                      {groups.length} groups
+                    </span>
+                    <span className="stat-badge" style={{ backgroundColor: '#fff3e0' }}>
+                      {ungroupedEntries.length} ungrouped
+                    </span>
+                    <button 
+                      className={`viz-toggle-btn ${showVisualizations ? 'active' : ''}`}
+                      onClick={() => setShowVisualizations(!showVisualizations)}
+                    >
+                      {showVisualizations ? 'Hide Charts' : 'Show Charts'}
+                    </button>
+                  </div>
+                  {showVisualizations && groupStats && (
+                    <div className="visualizations-panel">
+                      <div className="viz-charts-row">
+                        <div className="viz-chart">
+                          <h4>Request Duration Distribution</h4>
+                          <Bar
+                            data={{
+                              labels: Object.keys(groupStats.durationBuckets),
+                              datasets: [{
+                                label: 'Number of Requests',
+                                data: Object.values(groupStats.durationBuckets),
+                                backgroundColor: ['#4caf50', '#8bc34a', '#ffeb3b', '#ff9800', '#f44336'],
+                              }]
+                            }}
+                            options={{
+                              responsive: true,
+                              plugins: {
+                                legend: { display: false },
+                                title: { display: false }
+                              },
+                              scales: {
+                                y: { beginAtZero: true, title: { display: true, text: 'Count' } },
+                                x: { title: { display: true, text: 'Duration' } }
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="viz-chart">
+                          <h4>Request Durations (Top 20)</h4>
+                          <Bar
+                            data={{
+                              labels: groupStats.durations.slice(0, 20).map(d => d.keyValue.slice(0, 12)),
+                              datasets: [{
+                                label: 'Duration (ms)',
+                                data: groupStats.durations.slice(0, 20).map(d => d.duration),
+                                backgroundColor: groupStats.durations.slice(0, 20).map(d => d.hasError ? '#f44336' : '#2196f3'),
+                              }]
+                            }}
+                            options={{
+                              indexAxis: 'y' as const,
+                              responsive: true,
+                              plugins: {
+                                legend: { display: false },
+                                title: { display: false },
+                                tooltip: {
+                                  callbacks: {
+                                    label: (ctx) => {
+                                      const ms = ctx.raw as number;
+                                      if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+                                      return `${ms}ms`;
+                                    }
+                                  }
+                                }
+                              },
+                              scales: {
+                                x: { beginAtZero: true, title: { display: true, text: 'Duration (ms)' } }
+                              }
+                            }}
+                          />
+                          <div className="viz-legend">
+                            <span className="legend-item"><span className="legend-color" style={{ backgroundColor: '#2196f3' }}></span> Normal</span>
+                            <span className="legend-item"><span className="legend-color" style={{ backgroundColor: '#f44336' }}></span> Has Errors</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

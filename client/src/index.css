@@ -819,3 +819,78 @@ body {
 .grouped-table-body {
   overflow-x: auto;
 }
+
+.viz-toggle-btn {
+  background-color: #9c27b0;
+  color: white;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.viz-toggle-btn:hover {
+  background-color: #7b1fa2;
+}
+
+.viz-toggle-btn.active {
+  background-color: #7b1fa2;
+  box-shadow: 0 0 0 2px #ce93d8;
+}
+
+.visualizations-panel {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: #fafafa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.viz-charts-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+@media (max-width: 1000px) {
+  .viz-charts-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.viz-chart {
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.viz-chart h4 {
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  color: #495057;
+  text-align: center;
+}
+
+.viz-legend {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
