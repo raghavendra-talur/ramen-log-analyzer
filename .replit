@@ -1,0 +1,39 @@
+modules = ["web", "go-1.21", "go-1.24"]
+[agent]
+expertMode = true
+
+[nix]
+channel = "stable-25_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Ramen Log Analyzer"
+
+[[workflows.workflow]]
+name = "Ramen Log Analyzer"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "go run ."
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["./ramen-log-analyzer"]
+build = ["go", "build", "-o", "ramen-log-analyzer", "."]
