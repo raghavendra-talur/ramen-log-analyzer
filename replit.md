@@ -5,8 +5,8 @@ A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScri
 ## Architecture
 
 - **Go Parser Service** (port 3001): Handles log file parsing via HTTP API
-- **Node.js/Express Server** (port 5000): Serves frontend, handles file uploads, proxies to Go parser
-- **React + TypeScript Frontend**: Modern SPA with filtering, pagination, and log visualization
+- **Node.js/Express Server** (port 5000): Serves frontend, handles file uploads, proxies to Go parser with server-side filtering
+- **React + TypeScript Frontend**: Modern SPA with virtual scrolling, filtering, pagination, and log visualization
 
 ## Project Structure
 
@@ -15,9 +15,9 @@ A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScri
 ├── parser/              # Go log parsing logic
 ├── models/              # Go data models
 ├── server/              # Node.js/Express backend
-│   └── src/index.ts     # Express server
+│   └── src/index.ts     # Express server with server-side filtering
 ├── client/              # React frontend
-│   ├── src/App.tsx      # Main React component
+│   ├── src/App.tsx      # Main React component with virtual scrolling
 │   ├── src/index.css    # Styles
 │   └── dist/            # Built frontend (served by Express)
 ```
@@ -31,18 +31,21 @@ Two workflows run simultaneously:
 ## Key Features
 
 - Multi-file upload (up to 1GB per file)
+- **Server-side filtering** - Filter queries processed on server for better performance
+- **Virtual scrolling** (react-window) - Only renders visible rows for smooth performance with large datasets
 - Field-specific filtering (Timestamp, Level, Logger, File Position, Message, Details, Source File)
 - Column show/hide toggles for all 7 columns
 - Log level statistics with clickable badges
-- Pagination for large files
+- **Improved pagination controls** - Page size selector (50/100/250/500/1000), page navigation, jump-to-page
 - Color-coded log levels (TRACE, DEBUG, INFO, WARN, ERROR, FATAL)
-- Stack trace display for errors
+- **Click-to-expand detail panel** - Click any row to see full details including stack traces
 - Show/hide invalid entries
 
 ## API Endpoints
 
 - `POST /api/parse` - Upload and parse log files
-- `GET /api/entries` - Get parsed entries with pagination
+- `GET /api/entries` - Get parsed entries with server-side filtering and pagination
+  - Query params: page, pageSize, timestamp, level, logger, filePosition, message, details, filename, showInvalid
 - `GET /api/health` - Health check for both services
 
 ## Deployment

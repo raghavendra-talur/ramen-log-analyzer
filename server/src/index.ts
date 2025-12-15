@@ -88,9 +88,49 @@ app.post('/api/parse', upload.array('files'), async (req, res) => {
 
 app.get('/api/entries', (req, res) => {
   const page = parseInt(req.query.page as string) || 1;
-  const pageSize = parseInt(req.query.pageSize as string) || 10000;
+  const pageSize = parseInt(req.query.pageSize as string) || 100;
   
-  const totalEntries = storedEntries.length;
+  // Server-side filtering
+  const filters = {
+    timestamp: (req.query.timestamp as string || '').toLowerCase(),
+    level: req.query.level as string || '',
+    logger: (req.query.logger as string || '').toLowerCase(),
+    filePosition: (req.query.filePosition as string || '').toLowerCase(),
+    message: (req.query.message as string || '').toLowerCase(),
+    details: (req.query.details as string || '').toLowerCase(),
+    filename: (req.query.filename as string || '').toLowerCase(),
+    showInvalid: req.query.showInvalid !== 'false'
+  };
+
+  let filteredEntries = storedEntries.filter(entry => {
+    if (!filters.showInvalid && !entry.IsValid) return false;
+    
+    if (filters.timestamp && !entry.Timestamp?.toLowerCase().includes(filters.timestamp)) {
+      return false;
+    }
+    if (filters.level && entry.Level !== filters.level) {
+      return false;
+    }
+    if (filters.logger && !entry.Logger?.toLowerCase().includes(filters.logger)) {
+      return false;
+    }
+    if (filters.filePosition && !entry.FilePosition?.toLowerCase().includes(filters.filePosition)) {
+      return false;
+    }
+    if (filters.message && !entry.Message?.toLowerCase().includes(filters.message)) {
+      return false;
+    }
+    if (filters.details && !entry.DetailsJSON?.toLowerCase().includes(filters.details)) {
+      return false;
+    }
+    if (filters.filename && !entry.Filename?.toLowerCase().includes(filters.filename)) {
+      return false;
+    }
+    
+    return true;
+  });
+
+  const totalEntries = filteredEntries.length;
   const totalPages = Math.ceil(totalEntries / pageSize) || 1;
   const safePage = Math.min(Math.max(1, page), totalPages);
   
@@ -98,7 +138,7 @@ app.get('/api/entries', (req, res) => {
   const end = Math.min(start + pageSize, totalEntries);
   
   res.json({
-    entries: storedEntries.slice(start, end),
+    entries: filteredEntries.slice(start, end),
     pagination: {
       page: safePage,
       pageSize,
@@ -106,7 +146,8 @@ app.get('/api/entries', (req, res) => {
       totalPages,
       hasNext: safePage < totalPages,
       hasPrev: safePage > 1
-    }
+    },
+    totalUnfiltered: storedEntries.length
   });
 });
 

@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { FixedSizeList as List } from 'react-window';
 
 interface LogEntry {
   Raw: string;
@@ -48,8 +49,10 @@ interface ColumnVisibility {
 function App() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [hasData, setHasData] = useState(false);
   const [filters, setFilters] = useState<FieldFilters>({
     timestamp: '',
     level: '',
@@ -69,6 +72,24 @@ function App() {
     details: true,
     filename: true
   });
+  const [pageSize, setPageSize] = useState(100);
+  const [jumpToPage, setJumpToPage] = useState('');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState(500);
+  const [selectedEntry, setSelectedEntry] = useState<LogEntry | null>(null);
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const availableHeight = window.innerHeight - rect.top - 120;
+        setContainerHeight(Math.max(300, availableHeight));
+      }
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, [entries.length]);
 
   const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -99,65 +120,51 @@ function App() {
         type: 'success', 
         message: `Parsed ${data.totalEntries} entries from ${data.filenames.join(', ')}` 
       });
+      setHasData(true);
       
-      await fetchEntries(1);
+      await fetchEntries(1, pageSize, filters);
     } catch (error) {
       setStatus({ type: 'error', message: (error as Error).message });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [pageSize, filters]);
 
-  const fetchEntries = useCallback(async (page: number, pageSize = 10000) => {
+  const fetchEntries = useCallback(async (page: number, size: number, currentFilters: FieldFilters) => {
     try {
-      const response = await fetch(`/api/entries?page=${page}&pageSize=${pageSize}`);
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: size.toString(),
+        timestamp: currentFilters.timestamp,
+        level: currentFilters.level,
+        logger: currentFilters.logger,
+        filePosition: currentFilters.filePosition,
+        message: currentFilters.message,
+        details: currentFilters.details,
+        filename: currentFilters.filename,
+        showInvalid: currentFilters.showInvalid.toString()
+      });
+      
+      const response = await fetch(`/api/entries?${params}`);
       const data = await response.json();
       setEntries(data.entries || []);
       setPagination(data.pagination);
+      setTotalUnfiltered(data.totalUnfiltered || 0);
+      setSelectedEntry(null);
     } catch (error) {
       console.error('Failed to fetch entries:', error);
     }
   }, []);
 
-  const filteredEntries = useMemo(() => {
-    return entries.filter(entry => {
-      if (!filters.showInvalid && !entry.IsValid) return false;
-      
-      if (filters.timestamp && !entry.Timestamp?.toLowerCase().includes(filters.timestamp.toLowerCase())) {
-        return false;
-      }
-      if (filters.level && entry.Level !== filters.level) {
-        return false;
-      }
-      if (filters.logger && !entry.Logger?.toLowerCase().includes(filters.logger.toLowerCase())) {
-        return false;
-      }
-      if (filters.filePosition && !entry.FilePosition?.toLowerCase().includes(filters.filePosition.toLowerCase())) {
-        return false;
-      }
-      if (filters.message && !entry.Message?.toLowerCase().includes(filters.message.toLowerCase())) {
-        return false;
-      }
-      if (filters.details && !entry.DetailsJSON?.toLowerCase().includes(filters.details.toLowerCase())) {
-        return false;
-      }
-      if (filters.filename && !entry.Filename?.toLowerCase().includes(filters.filename.toLowerCase())) {
-        return false;
-      }
-      
-      return true;
-    });
-  }, [entries, filters]);
-
-  const levelStats = useMemo(() => {
-    const stats: Record<string, number> = {};
-    entries.forEach(e => {
-      if (e.Level) {
-        stats[e.Level] = (stats[e.Level] || 0) + 1;
-      }
-    });
-    return stats;
-  }, [entries]);
+  useEffect(() => {
+    if (!hasData) return;
+    
+    const debounceTimer = setTimeout(() => {
+      fetchEntries(1, pageSize, filters);
+    }, 300);
+    
+    return () => clearTimeout(debounceTimer);
+  }, [filters, pageSize, hasData, fetchEntries]);
 
   const clearFilters = () => {
     setFilters({
@@ -188,11 +195,70 @@ function App() {
     });
   };
 
+  const handlePageChange = (newPage: number) => {
+    if (pagination && newPage >= 1 && newPage <= pagination.totalPages) {
+      fetchEntries(newPage, pageSize, filters);
+    }
+  };
+
+  const handleJumpToPage = (e: React.FormEvent) => {
+    e.preventDefault();
+    const page = parseInt(jumpToPage);
+    if (!isNaN(page)) {
+      handlePageChange(page);
+      setJumpToPage('');
+    }
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+  };
+
   const hasActiveFilters = filters.timestamp || filters.level || filters.logger || 
     filters.filePosition || filters.message || filters.details || filters.filename;
 
   const visibleColumnCount = Object.values(columns).filter(Boolean).length;
   const totalColumnCount = 7;
+
+  const levelStats = entries.reduce((acc, e) => {
+    if (e.Level) {
+      acc[e.Level] = (acc[e.Level] || 0) + 1;
+    }
+    return acc;
+  }, {} as Record<string, number>);
+
+  const truncate = (text: string | undefined, maxLen: number) => {
+    if (!text) return '-';
+    return text.length > maxLen ? text.substring(0, maxLen) + '...' : text;
+  };
+
+  const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
+    const entry = entries[index];
+    if (!entry) return null;
+
+    const isSelected = selectedEntry === entry;
+    const hasStackTrace = entry.StackTrace && entry.StackTrace.length > 0;
+
+    return (
+      <div 
+        style={style} 
+        className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''} ${isSelected ? 'selected' : ''}`}
+        onClick={() => setSelectedEntry(isSelected ? null : entry)}
+      >
+        {columns.timestamp && <div className="virtual-cell cell-timestamp">{truncate(entry.Timestamp, 25)}</div>}
+        {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong>{hasStackTrace && <span className="stack-indicator" title="Has stack trace"> +</span>}</div>}
+        {columns.logger && <div className="virtual-cell cell-logger">{truncate(entry.Logger, 30)}</div>}
+        {columns.filePosition && <div className="virtual-cell cell-filepos">{truncate(entry.FilePosition, 30)}</div>}
+        {columns.message && (
+          <div className="virtual-cell cell-message">
+            {truncate(entry.IsValid ? entry.Message : entry.Raw || entry.ParseError, 100)}
+          </div>
+        )}
+        {columns.details && <div className="virtual-cell cell-details">{truncate(entry.DetailsJSON, 40)}</div>}
+        {columns.filename && <div className="virtual-cell cell-filename">{truncate(entry.Filename, 20)}</div>}
+      </div>
+    );
+  };
 
   return (
     <div className="container">
@@ -216,7 +282,7 @@ function App() {
       </div>
 
       <div className="card">
-        {entries.length === 0 ? (
+        {!hasData ? (
           <div className="empty-state">
             No log files to display. Please choose one or more files.
           </div>
@@ -226,7 +292,7 @@ function App() {
               {Object.entries(levelStats).map(([level, count]) => (
                 <span 
                   key={level} 
-                  className={`stat-badge level-${level}`}
+                  className={`stat-badge level-${level} ${filters.level === level ? 'active' : ''}`}
                   style={{ cursor: 'pointer' }}
                   onClick={() => setFilters(f => ({ ...f, level: f.level === level ? '' : level }))}
                 >
@@ -234,10 +300,10 @@ function App() {
                 </span>
               ))}
               <span className="stat-badge" style={{ backgroundColor: '#e9ecef' }}>
-                Total: {entries.length}
+                Total: {totalUnfiltered}
               </span>
               <span className="stat-badge" style={{ backgroundColor: '#d4edda', color: '#155724' }}>
-                Showing: {filteredEntries.length}
+                Filtered: {pagination?.totalEntries || 0}
               </span>
             </div>
 
@@ -418,62 +484,148 @@ function App() {
               </div>
             </div>
 
-            <div className="table-wrapper">
-              <table className="log-table">
-                <thead>
-                  <tr>
-                    {columns.timestamp && <th>Timestamp</th>}
-                    {columns.level && <th>Level</th>}
-                    {columns.logger && <th>Logger</th>}
-                    {columns.filePosition && <th>File</th>}
-                    {columns.message && <th>Message</th>}
-                    {columns.details && <th>Details</th>}
-                    {columns.filename && <th>Source File</th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredEntries.map((entry, idx) => (
-                    <tr 
-                      key={idx} 
-                      className={`${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
-                    >
-                      {columns.timestamp && <td>{entry.Timestamp || '-'}</td>}
-                      {columns.level && <td><strong>{entry.Level || '-'}</strong></td>}
-                      {columns.logger && <td>{entry.Logger || '-'}</td>}
-                      {columns.filePosition && <td>{entry.FilePosition || '-'}</td>}
-                      {columns.message && (
-                        <td>
-                          {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
-                          {entry.StackTrace && entry.StackTrace.length > 0 && (
-                            <div className="stack-trace">
-                              {entry.StackTrace.join('\n')}
-                            </div>
-                          )}
-                        </td>
-                      )}
-                      {columns.details && <td className="details-json">{entry.DetailsJSON || '-'}</td>}
-                      {columns.filename && <td>{entry.Filename || '-'}</td>}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="pagination-controls">
+              <div className="page-size-selector">
+                <label>Rows per page:</label>
+                <select 
+                  value={pageSize} 
+                  onChange={e => handlePageSizeChange(parseInt(e.target.value))}
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1000</option>
+                </select>
+              </div>
+
+              {pagination && (
+                <div className="pagination-info">
+                  Showing {((pagination.page - 1) * pagination.pageSize) + 1} - {Math.min(pagination.page * pagination.pageSize, pagination.totalEntries)} of {pagination.totalEntries}
+                </div>
+              )}
+
+              {pagination && pagination.totalPages > 1 && (
+                <div className="pagination-nav">
+                  <button 
+                    disabled={!pagination.hasPrev}
+                    onClick={() => handlePageChange(1)}
+                    title="First page"
+                  >
+                    ««
+                  </button>
+                  <button 
+                    disabled={!pagination.hasPrev}
+                    onClick={() => handlePageChange(pagination.page - 1)}
+                  >
+                    Previous
+                  </button>
+                  <span className="page-indicator">
+                    Page {pagination.page} of {pagination.totalPages}
+                  </span>
+                  <button 
+                    disabled={!pagination.hasNext}
+                    onClick={() => handlePageChange(pagination.page + 1)}
+                  >
+                    Next
+                  </button>
+                  <button 
+                    disabled={!pagination.hasNext}
+                    onClick={() => handlePageChange(pagination.totalPages)}
+                    title="Last page"
+                  >
+                    »»
+                  </button>
+                  <form onSubmit={handleJumpToPage} className="jump-to-page">
+                    <input
+                      type="number"
+                      min={1}
+                      max={pagination.totalPages}
+                      value={jumpToPage}
+                      onChange={e => setJumpToPage(e.target.value)}
+                      placeholder="Go to..."
+                    />
+                    <button type="submit">Go</button>
+                  </form>
+                </div>
+              )}
             </div>
 
-            {pagination && pagination.totalPages > 1 && (
-              <div className="pagination">
-                <button 
-                  disabled={!pagination.hasPrev}
-                  onClick={() => fetchEntries(pagination.page - 1)}
+            <div className="virtual-table" ref={containerRef}>
+              <div className="virtual-header">
+                {columns.timestamp && <div className="virtual-cell cell-timestamp">Timestamp</div>}
+                {columns.level && <div className="virtual-cell cell-level">Level</div>}
+                {columns.logger && <div className="virtual-cell cell-logger">Logger</div>}
+                {columns.filePosition && <div className="virtual-cell cell-filepos">File</div>}
+                {columns.message && <div className="virtual-cell cell-message">Message</div>}
+                {columns.details && <div className="virtual-cell cell-details">Details</div>}
+                {columns.filename && <div className="virtual-cell cell-filename">Source File</div>}
+              </div>
+              
+              {entries.length > 0 ? (
+                <List
+                  height={containerHeight}
+                  itemCount={entries.length}
+                  itemSize={40}
+                  width="100%"
                 >
-                  Previous
-                </button>
-                <span>Page {pagination.page} of {pagination.totalPages}</span>
-                <button 
-                  disabled={!pagination.hasNext}
-                  onClick={() => fetchEntries(pagination.page + 1)}
-                >
-                  Next
-                </button>
+                  {Row}
+                </List>
+              ) : (
+                <div className="no-results">No entries match your filters</div>
+              )}
+            </div>
+
+            {selectedEntry && (
+              <div className="detail-panel">
+                <div className="detail-header">
+                  <h3>Entry Details</h3>
+                  <button className="close-btn" onClick={() => setSelectedEntry(null)}>×</button>
+                </div>
+                <div className="detail-content">
+                  <div className="detail-row">
+                    <span className="detail-label">Timestamp:</span>
+                    <span className="detail-value">{selectedEntry.Timestamp || '-'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Level:</span>
+                    <span className={`detail-value level-${selectedEntry.Level}`}><strong>{selectedEntry.Level || '-'}</strong></span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Logger:</span>
+                    <span className="detail-value">{selectedEntry.Logger || '-'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">File Position:</span>
+                    <span className="detail-value">{selectedEntry.FilePosition || '-'}</span>
+                  </div>
+                  <div className="detail-row">
+                    <span className="detail-label">Source File:</span>
+                    <span className="detail-value">{selectedEntry.Filename || '-'}</span>
+                  </div>
+                  <div className="detail-row full-width">
+                    <span className="detail-label">Message:</span>
+                    <pre className="detail-value message-value">{selectedEntry.IsValid ? selectedEntry.Message : selectedEntry.Raw || selectedEntry.ParseError}</pre>
+                  </div>
+                  {selectedEntry.DetailsJSON && (
+                    <div className="detail-row full-width">
+                      <span className="detail-label">Details (JSON):</span>
+                      <pre className="detail-value json-value">{selectedEntry.DetailsJSON}</pre>
+                    </div>
+                  )}
+                  {selectedEntry.StackTrace && selectedEntry.StackTrace.length > 0 && (
+                    <div className="detail-row full-width">
+                      <span className="detail-label">Stack Trace:</span>
+                      <pre className="detail-value stack-value">{selectedEntry.StackTrace.join('\n')}</pre>
+                    </div>
+                  )}
+                  {!selectedEntry.IsValid && selectedEntry.ParseError && (
+                    <div className="detail-row full-width">
+                      <span className="detail-label">Parse Error:</span>
+                      <span className="detail-value error-value">{selectedEntry.ParseError}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </>
