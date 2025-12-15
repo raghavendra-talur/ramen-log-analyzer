@@ -1,30 +1,109 @@
 package main
 
 import (
-        "embed"
+        "encoding/json"
+        "io"
         "log"
         "net/http"
+        "os"
+        "sort"
 
-        "github.com/raghavendra-talur/ramen-log-analyzer/handlers"
+        "github.com/raghavendra-talur/ramen-log-analyzer/models"
+        "github.com/raghavendra-talur/ramen-log-analyzer/parser"
 )
 
-const PORT = "0.0.0.0:5000" // Server port number
+const PORT = "0.0.0.0:3001"
 
-//go:embed templates/index.html
-var content embed.FS
+type ParseResponse struct {
+        Entries []models.LogEntry `json:"entries"`
+        Error   string            `json:"error,omitempty"`
+}
 
 func main() {
-        // Create new handler
-        handler, err := handlers.New(content)
-        if err != nil {
-                log.Fatal(err)
+        http.HandleFunc("/parse", handleParse)
+        http.HandleFunc("/health", handleHealth)
+
+        log.Printf("Go Parser Service starting on %s...\n", PORT)
+        log.Fatal(http.ListenAndServe(PORT, nil))
+}
+
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Content-Type", "application/json")
+        w.WriteHeader(http.StatusOK)
+        json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func handleParse(w http.ResponseWriter, r *http.Request) {
+        if r.Method != http.MethodPost {
+                http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+                return
         }
 
-        // Set up routes
-        http.HandleFunc("/", handler.HandleIndex)
+        w.Header().Set("Content-Type", "application/json")
 
-        // Start server
-        log.Printf("Server starting on %s...\n", PORT)
-        log.Printf("Maximum file size: %d bytes\n", handlers.MAX_FILE_SIZE)
-        log.Fatal(http.ListenAndServe(PORT, nil))
+        err := r.ParseMultipartForm(1 << 30)
+        if err != nil {
+                json.NewEncoder(w).Encode(ParseResponse{Error: err.Error()})
+                return
+        }
+
+        files := r.MultipartForm.File["files"]
+        if len(files) == 0 {
+                json.NewEncoder(w).Encode(ParseResponse{Error: "No files uploaded"})
+                return
+        }
+
+        p := parser.New()
+        var allEntries []models.LogEntry
+
+        for _, fileHeader := range files {
+                file, err := fileHeader.Open()
+                if err != nil {
+                        json.NewEncoder(w).Encode(ParseResponse{Error: err.Error()})
+                        return
+                }
+                defer file.Close()
+
+                tempFile, err := os.CreateTemp("", "temp-*.log")
+                if err != nil {
+                        json.NewEncoder(w).Encode(ParseResponse{Error: err.Error()})
+                        return
+                }
+                defer os.Remove(tempFile.Name())
+                defer tempFile.Close()
+
+                _, err = io.Copy(tempFile, file)
+                if err != nil {
+                        json.NewEncoder(w).Encode(ParseResponse{Error: err.Error()})
+                        return
+                }
+
+                logEntries, err := p.ParseFile(tempFile, fileHeader.Filename)
+                if err != nil {
+                        json.NewEncoder(w).Encode(ParseResponse{Error: err.Error()})
+                        return
+                }
+
+                allEntries = append(allEntries, logEntries...)
+                log.Printf("Parsed file: %v with %v entries\n", fileHeader.Filename, len(logEntries))
+        }
+
+        sort.Slice(allEntries, func(i, j int) bool {
+                iEntry := allEntries[i]
+                jEntry := allEntries[j]
+
+                if !iEntry.IsValid && !jEntry.IsValid {
+                        return i < j
+                }
+                if !iEntry.IsValid {
+                        return false
+                }
+                if !jEntry.IsValid {
+                        return true
+                }
+                return iEntry.Time.Before(jEntry.Time)
+        })
+
+        log.Printf("Total entries after sorting: %v\n", len(allEntries))
+        json.NewEncoder(w).Encode(ParseResponse{Entries: allEntries})
 }
