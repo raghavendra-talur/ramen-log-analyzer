@@ -76,6 +76,7 @@ function App() {
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(500);
+  const [wrapText, setWrapText] = useState(false);
 
   useEffect(() => {
     const updateHeight = () => {
@@ -362,6 +363,14 @@ function App() {
                   />
                   Source File
                 </label>
+                <label className="column-toggle wrap-toggle">
+                  <input
+                    type="checkbox"
+                    checked={wrapText}
+                    onChange={() => setWrapText(!wrapText)}
+                  />
+                  Wrap Text
+                </label>
               </div>
             </div>
 
@@ -552,14 +561,37 @@ function App() {
               </div>
               
               {entries.length > 0 ? (
-                <List
-                  height={containerHeight}
-                  itemCount={entries.length}
-                  itemSize={40}
-                  width="100%"
-                >
-                  {Row}
-                </List>
+                wrapText ? (
+                  <div className="wrapped-table-body" style={{ maxHeight: containerHeight, overflowY: 'auto' }}>
+                    {entries.map((entry, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`virtual-row wrapped ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
+                      >
+                        {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
+                        {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
+                        {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
+                        {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
+                        {columns.message && (
+                          <div className="virtual-cell cell-message">
+                            {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
+                          </div>
+                        )}
+                        {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
+                        {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <List
+                    height={containerHeight}
+                    itemCount={entries.length}
+                    itemSize={40}
+                    width="100%"
+                  >
+                    {Row}
+                  </List>
+                )
               ) : (
                 <div className="no-results">No entries match your filters</div>
               )}

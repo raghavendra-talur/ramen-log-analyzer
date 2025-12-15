@@ -620,3 +620,25 @@ body {
 .error-value {
   color: #dc3545;
 }
+
+.wrap-toggle {
+  background-color: #e3f2fd !important;
+  border-color: #90caf9 !important;
+}
+
+.wrapped-table-body {
+  overflow-x: auto;
+}
+
+.virtual-row.wrapped {
+  min-height: 40px;
+  height: auto;
+}
+
+.virtual-row.wrapped .virtual-cell {
+  white-space: normal;
+  word-wrap: break-word;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: clip;
+}
