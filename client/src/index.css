@@ -367,6 +367,9 @@ body {
 .virtual-cell {
   padding: 8px;
   border-right: 1px solid #eee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .virtual-cell:last-child {
