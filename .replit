@@ -27,8 +27,8 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "go run ."
-waitForPort = 3001
+args = "go run main.go"
+waitForPort = 8080
 
 [workflows.workflow.metadata]
 outputType = "console"
@@ -55,5 +55,13 @@ externalPort = 80
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["bash", "-c", "./main & sleep 2 && node server/dist/index.js"]
-build = ["bash", "-c", "go mod tidy && go build -o main . && cd client && npm install && npm run build && cd ../server && npm install && npm run build"]
+run = [
+	"bash",
+	"-c",
+	"./ramen-log-analyzer && sleep 2 && node server/dist/index.js",
+]
+build = [
+	"bash",
+	"-c",
+	"go mod tidy && go build -o ramen-log-analyzer . && cd client && npm install && npm run build && cd ../server && npm install && npm run build",
+]

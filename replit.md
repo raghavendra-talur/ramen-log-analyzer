@@ -4,7 +4,7 @@ A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScri
 
 ## Architecture
 
-- **Go Parser Service** (port 3001): Handles log file parsing via HTTP API
+- **Go Parser Service** (port 8080): Handles log file parsing via HTTP API
 - **Node.js/Express Server** (port 5000): Serves frontend, handles file uploads, proxies to Go parser with server-side filtering
 - **React + TypeScript Frontend**: Modern SPA with virtual scrolling, filtering, pagination, and log visualization
 
@@ -25,7 +25,7 @@ A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScri
 ## Running Locally
 
 Two workflows run simultaneously:
-1. **Go Parser Service**: `go run .` (port 3001)
+1. **Go Parser Service**: `go run .` (port 8080)
 2. **Web Server**: `cd server && npm run dev` (port 5000)
 
 ## Key Features
