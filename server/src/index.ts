@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 5000;
-const GO_PARSER_URL = 'http://localhost:3001';
+const GO_PARSER_URL = 'http://127.0.0.1:3001';
 
 app.use(cors());
 app.use(express.json());
