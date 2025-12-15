@@ -753,7 +753,7 @@ function App() {
                               <span className="group-key">{groupByKey}: {group.keyValue}</span>
                               <span className="group-count">{group.count} entries</span>
                             </div>
-                            <div className={`virtual-row first-entry ${group.firstEntry.Level ? `level-${group.firstEntry.Level}` : ''}`}>
+                            <div className={`virtual-row first-entry ${wrapText ? 'wrapped' : ''} ${group.firstEntry.Level ? `level-${group.firstEntry.Level}` : ''}`}>
                               {columns.timestamp && <div className="virtual-cell cell-timestamp">{group.firstEntry.Timestamp || '-'}</div>}
                               {columns.level && <div className="virtual-cell cell-level"><strong>{group.firstEntry.Level || '-'}</strong></div>}
                               {columns.logger && <div className="virtual-cell cell-logger">{group.firstEntry.Logger || '-'}</div>}
@@ -763,7 +763,7 @@ function App() {
                               {columns.filename && <div className="virtual-cell cell-filename">{group.firstEntry.Filename || '-'}</div>}
                             </div>
                             {isExpanded && middleEntries.map((entry, idx) => (
-                              <div key={idx} className={`virtual-row middle-entry ${entry.Level ? `level-${entry.Level}` : ''}`}>
+                              <div key={idx} className={`virtual-row middle-entry ${wrapText ? 'wrapped' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}>
                                 {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
                                 {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
                                 {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
@@ -779,7 +779,7 @@ function App() {
                               </div>
                             )}
                             {group.count > 1 && (
-                              <div className={`virtual-row last-entry ${group.lastEntry.Level ? `level-${group.lastEntry.Level}` : ''}`}>
+                              <div className={`virtual-row last-entry ${wrapText ? 'wrapped' : ''} ${group.lastEntry.Level ? `level-${group.lastEntry.Level}` : ''}`}>
                                 {columns.timestamp && <div className="virtual-cell cell-timestamp">{group.lastEntry.Timestamp || '-'}</div>}
                                 {columns.level && <div className="virtual-cell cell-level"><strong>{group.lastEntry.Level || '-'}</strong></div>}
                                 {columns.logger && <div className="virtual-cell cell-logger">{group.lastEntry.Logger || '-'}</div>}
@@ -799,7 +799,7 @@ function App() {
                             <span className="group-count">{ungroupedEntries.length} entries</span>
                           </div>
                           {ungroupedEntries.map((entry, idx) => (
-                            <div key={idx} className={`virtual-row ${entry.Level ? `level-${entry.Level}` : ''}`}>
+                            <div key={idx} className={`virtual-row ${wrapText ? 'wrapped' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}>
                               {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
                               {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
                               {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
