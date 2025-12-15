@@ -35,6 +35,11 @@ Two workflows run simultaneously:
 - **Server-side filtering** - Filter queries processed on server for better performance
 - **Virtual scrolling** (react-window) - Only renders visible rows for smooth performance with large datasets
 - **Wrap Text toggle** - Switch between truncated (fast) and wrapped (full content) display modes
+- **Group by JSON key** - Group log entries by a key in the Details JSON (e.g., "rid" for request ID)
+  - Collapsible groups showing first and last entries by default
+  - Click to expand and see all entries in a group
+  - Color-coded entries: green=first, red=last, yellow=middle
+- **Export Results** - Download filtered results as a text file
 - Field-specific filtering (Timestamp, Level, Logger, File Position, Message, Details, Source File)
 - Column show/hide toggles for all 7 columns
 - Log level statistics with clickable badges
@@ -47,6 +52,8 @@ Two workflows run simultaneously:
 - `POST /api/parse` - Upload and parse log files
 - `GET /api/entries` - Get parsed entries with server-side filtering and pagination
   - Query params: page, pageSize, timestamp, level, logger, filePosition, message, details, filename, showInvalid
+- `GET /api/grouped` - Get entries grouped by a JSON key from Details
+  - Query params: groupBy (required), plus all filter params from /api/entries
 - `GET /api/health` - Health check for both services
 
 ## Deployment

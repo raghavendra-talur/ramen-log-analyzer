@@ -46,6 +46,15 @@ interface ColumnVisibility {
   filename: boolean;
 }
 
+interface LogGroup {
+  groupKey: string;
+  keyValue: string;
+  count: number;
+  firstEntry: LogEntry;
+  lastEntry: LogEntry;
+  allEntries: LogEntry[];
+}
+
 function App() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -77,6 +86,11 @@ function App() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(500);
   const [wrapText, setWrapText] = useState(false);
+  const [groupingEnabled, setGroupingEnabled] = useState(false);
+  const [groupByKey, setGroupByKey] = useState('rid');
+  const [groups, setGroups] = useState<LogGroup[]>([]);
+  const [ungroupedEntries, setUngroupedEntries] = useState<LogEntry[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const updateHeight = () => {
@@ -90,6 +104,55 @@ function App() {
     window.addEventListener('resize', updateHeight);
     return () => window.removeEventListener('resize', updateHeight);
   }, [entries.length]);
+
+  const fetchEntries = useCallback(async (page: number, size: number, currentFilters: FieldFilters) => {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: size.toString(),
+        timestamp: currentFilters.timestamp,
+        level: currentFilters.level,
+        logger: currentFilters.logger,
+        filePosition: currentFilters.filePosition,
+        message: currentFilters.message,
+        details: currentFilters.details,
+        filename: currentFilters.filename,
+        showInvalid: currentFilters.showInvalid.toString()
+      });
+      
+      const response = await fetch(`/api/entries?${params}`);
+      const data = await response.json();
+      setEntries(data.entries || []);
+      setPagination(data.pagination);
+      setTotalUnfiltered(data.totalUnfiltered || 0);
+    } catch (error) {
+      console.error('Failed to fetch entries:', error);
+    }
+  }, []);
+
+  const fetchGroupedEntries = useCallback(async (key: string, currentFilters: FieldFilters) => {
+    try {
+      const params = new URLSearchParams({
+        groupBy: key,
+        timestamp: currentFilters.timestamp,
+        level: currentFilters.level,
+        logger: currentFilters.logger,
+        filePosition: currentFilters.filePosition,
+        message: currentFilters.message,
+        details: currentFilters.details,
+        filename: currentFilters.filename,
+        showInvalid: currentFilters.showInvalid.toString()
+      });
+      
+      const response = await fetch(`/api/grouped?${params}`);
+      const data = await response.json();
+      setGroups(data.groups || []);
+      setUngroupedEntries(data.ungroupedEntries || []);
+      setExpandedGroups(new Set());
+    } catch (error) {
+      console.error('Failed to fetch grouped entries:', error);
+    }
+  }, []);
 
   const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -122,48 +185,43 @@ function App() {
       });
       setHasData(true);
       
-      await fetchEntries(1, pageSize, filters);
+      if (groupingEnabled && groupByKey) {
+        await fetchGroupedEntries(groupByKey, filters);
+      } else {
+        await fetchEntries(1, pageSize, filters);
+      }
     } catch (error) {
       setStatus({ type: 'error', message: (error as Error).message });
     } finally {
       setLoading(false);
     }
-  }, [pageSize, filters]);
-
-  const fetchEntries = useCallback(async (page: number, size: number, currentFilters: FieldFilters) => {
-    try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        pageSize: size.toString(),
-        timestamp: currentFilters.timestamp,
-        level: currentFilters.level,
-        logger: currentFilters.logger,
-        filePosition: currentFilters.filePosition,
-        message: currentFilters.message,
-        details: currentFilters.details,
-        filename: currentFilters.filename,
-        showInvalid: currentFilters.showInvalid.toString()
-      });
-      
-      const response = await fetch(`/api/entries?${params}`);
-      const data = await response.json();
-      setEntries(data.entries || []);
-      setPagination(data.pagination);
-      setTotalUnfiltered(data.totalUnfiltered || 0);
-    } catch (error) {
-      console.error('Failed to fetch entries:', error);
-    }
-  }, []);
+  }, [pageSize, filters, groupingEnabled, groupByKey, fetchEntries, fetchGroupedEntries]);
 
   useEffect(() => {
     if (!hasData) return;
     
     const debounceTimer = setTimeout(() => {
-      fetchEntries(1, pageSize, filters);
+      if (groupingEnabled && groupByKey) {
+        fetchGroupedEntries(groupByKey, filters);
+      } else {
+        fetchEntries(1, pageSize, filters);
+      }
     }, 300);
     
     return () => clearTimeout(debounceTimer);
-  }, [filters, pageSize, hasData, fetchEntries]);
+  }, [filters, pageSize, hasData, fetchEntries, fetchGroupedEntries, groupingEnabled, groupByKey]);
+
+  const toggleGroupExpansion = (keyValue: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(keyValue)) {
+        next.delete(keyValue);
+      } else {
+        next.add(keyValue);
+      }
+      return next;
+    });
+  };
 
   const clearFilters = () => {
     setFilters({
@@ -457,6 +515,40 @@ function App() {
               </div>
             </div>
 
+            <div className="grouping-section">
+              <div className="grouping-header">
+                <label className="grouping-toggle">
+                  <input
+                    type="checkbox"
+                    checked={groupingEnabled}
+                    onChange={() => setGroupingEnabled(!groupingEnabled)}
+                  />
+                  Group by JSON key
+                </label>
+                {groupingEnabled && (
+                  <div className="grouping-key-input">
+                    <input
+                      type="text"
+                      value={groupByKey}
+                      onChange={e => setGroupByKey(e.target.value)}
+                      placeholder="Enter key (e.g., rid)"
+                      className="filter-input"
+                    />
+                  </div>
+                )}
+              </div>
+              {groupingEnabled && groups.length > 0 && (
+                <div className="grouping-stats">
+                  <span className="stat-badge" style={{ backgroundColor: '#e3f2fd' }}>
+                    {groups.length} groups
+                  </span>
+                  <span className="stat-badge" style={{ backgroundColor: '#fff3e0' }}>
+                    {ungroupedEntries.length} ungrouped
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="filters-section">
               <div className="filters-header">
                 <h3>Filters</h3>
@@ -565,72 +657,74 @@ function App() {
               </div>
             </div>
 
-            <div className="pagination-controls">
-              <div className="page-size-selector">
-                <label>Rows per page:</label>
-                <select 
-                  value={pageSize} 
-                  onChange={e => handlePageSizeChange(parseInt(e.target.value))}
-                >
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={250}>250</option>
-                  <option value={500}>500</option>
-                  <option value={1000}>1000</option>
-                </select>
+            {!groupingEnabled && (
+              <div className="pagination-controls">
+                <div className="page-size-selector">
+                  <label>Rows per page:</label>
+                  <select 
+                    value={pageSize} 
+                    onChange={e => handlePageSizeChange(parseInt(e.target.value))}
+                  >
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={250}>250</option>
+                    <option value={500}>500</option>
+                    <option value={1000}>1000</option>
+                  </select>
+                </div>
+
+                {pagination && (
+                  <div className="pagination-info">
+                    Showing {((pagination.page - 1) * pagination.pageSize) + 1} - {Math.min(pagination.page * pagination.pageSize, pagination.totalEntries)} of {pagination.totalEntries}
+                  </div>
+                )}
+
+                {pagination && pagination.totalPages > 1 && (
+                  <div className="pagination-nav">
+                    <button 
+                      disabled={!pagination.hasPrev}
+                      onClick={() => handlePageChange(1)}
+                      title="First page"
+                    >
+                      ««
+                    </button>
+                    <button 
+                      disabled={!pagination.hasPrev}
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                    >
+                      Previous
+                    </button>
+                    <span className="page-indicator">
+                      Page {pagination.page} of {pagination.totalPages}
+                    </span>
+                    <button 
+                      disabled={!pagination.hasNext}
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                    >
+                      Next
+                    </button>
+                    <button 
+                      disabled={!pagination.hasNext}
+                      onClick={() => handlePageChange(pagination.totalPages)}
+                      title="Last page"
+                    >
+                      »»
+                    </button>
+                    <form onSubmit={handleJumpToPage} className="jump-to-page">
+                      <input
+                        type="number"
+                        min={1}
+                        max={pagination.totalPages}
+                        value={jumpToPage}
+                        onChange={e => setJumpToPage(e.target.value)}
+                        placeholder="Go to..."
+                      />
+                      <button type="submit">Go</button>
+                    </form>
+                  </div>
+                )}
               </div>
-
-              {pagination && (
-                <div className="pagination-info">
-                  Showing {((pagination.page - 1) * pagination.pageSize) + 1} - {Math.min(pagination.page * pagination.pageSize, pagination.totalEntries)} of {pagination.totalEntries}
-                </div>
-              )}
-
-              {pagination && pagination.totalPages > 1 && (
-                <div className="pagination-nav">
-                  <button 
-                    disabled={!pagination.hasPrev}
-                    onClick={() => handlePageChange(1)}
-                    title="First page"
-                  >
-                    ««
-                  </button>
-                  <button 
-                    disabled={!pagination.hasPrev}
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                  >
-                    Previous
-                  </button>
-                  <span className="page-indicator">
-                    Page {pagination.page} of {pagination.totalPages}
-                  </span>
-                  <button 
-                    disabled={!pagination.hasNext}
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                  >
-                    Next
-                  </button>
-                  <button 
-                    disabled={!pagination.hasNext}
-                    onClick={() => handlePageChange(pagination.totalPages)}
-                    title="Last page"
-                  >
-                    »»
-                  </button>
-                  <form onSubmit={handleJumpToPage} className="jump-to-page">
-                    <input
-                      type="number"
-                      min={1}
-                      max={pagination.totalPages}
-                      value={jumpToPage}
-                      onChange={e => setJumpToPage(e.target.value)}
-                      placeholder="Go to..."
-                    />
-                    <button type="submit">Go</button>
-                  </form>
-                </div>
-              )}
-            </div>
+            )}
 
             <div className="virtual-table" ref={containerRef}>
               <div className="virtual-header">
@@ -643,7 +737,84 @@ function App() {
                 {columns.filename && <div className="virtual-cell cell-filename">Source File</div>}
               </div>
               
-              {entries.length > 0 ? (
+              {groupingEnabled ? (
+                <div className="grouped-table-body" style={{ maxHeight: containerHeight, overflowY: 'auto' }}>
+                  {groups.length === 0 && ungroupedEntries.length === 0 ? (
+                    <div className="no-results">No entries match your filters</div>
+                  ) : (
+                    <>
+                      {groups.map((group) => {
+                        const isExpanded = expandedGroups.has(group.keyValue);
+                        const middleEntries = group.allEntries.slice(1, -1);
+                        return (
+                          <div key={group.keyValue} className="log-group">
+                            <div className="group-header" onClick={() => toggleGroupExpansion(group.keyValue)}>
+                              <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
+                              <span className="group-key">{groupByKey}: {group.keyValue}</span>
+                              <span className="group-count">{group.count} entries</span>
+                            </div>
+                            <div className={`virtual-row first-entry ${group.firstEntry.Level ? `level-${group.firstEntry.Level}` : ''}`}>
+                              {columns.timestamp && <div className="virtual-cell cell-timestamp">{group.firstEntry.Timestamp || '-'}</div>}
+                              {columns.level && <div className="virtual-cell cell-level"><strong>{group.firstEntry.Level || '-'}</strong></div>}
+                              {columns.logger && <div className="virtual-cell cell-logger">{group.firstEntry.Logger || '-'}</div>}
+                              {columns.filePosition && <div className="virtual-cell cell-filepos">{group.firstEntry.FilePosition || '-'}</div>}
+                              {columns.message && <div className="virtual-cell cell-message">{group.firstEntry.Message || '-'}</div>}
+                              {columns.details && <div className="virtual-cell cell-details">{group.firstEntry.DetailsJSON || '-'}</div>}
+                              {columns.filename && <div className="virtual-cell cell-filename">{group.firstEntry.Filename || '-'}</div>}
+                            </div>
+                            {isExpanded && middleEntries.map((entry, idx) => (
+                              <div key={idx} className={`virtual-row middle-entry ${entry.Level ? `level-${entry.Level}` : ''}`}>
+                                {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
+                                {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
+                                {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
+                                {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
+                                {columns.message && <div className="virtual-cell cell-message">{entry.Message || '-'}</div>}
+                                {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
+                                {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+                              </div>
+                            ))}
+                            {!isExpanded && middleEntries.length > 0 && (
+                              <div className="collapsed-indicator" onClick={() => toggleGroupExpansion(group.keyValue)}>
+                                ... {middleEntries.length} more entries (click to expand)
+                              </div>
+                            )}
+                            {group.count > 1 && (
+                              <div className={`virtual-row last-entry ${group.lastEntry.Level ? `level-${group.lastEntry.Level}` : ''}`}>
+                                {columns.timestamp && <div className="virtual-cell cell-timestamp">{group.lastEntry.Timestamp || '-'}</div>}
+                                {columns.level && <div className="virtual-cell cell-level"><strong>{group.lastEntry.Level || '-'}</strong></div>}
+                                {columns.logger && <div className="virtual-cell cell-logger">{group.lastEntry.Logger || '-'}</div>}
+                                {columns.filePosition && <div className="virtual-cell cell-filepos">{group.lastEntry.FilePosition || '-'}</div>}
+                                {columns.message && <div className="virtual-cell cell-message">{group.lastEntry.Message || '-'}</div>}
+                                {columns.details && <div className="virtual-cell cell-details">{group.lastEntry.DetailsJSON || '-'}</div>}
+                                {columns.filename && <div className="virtual-cell cell-filename">{group.lastEntry.Filename || '-'}</div>}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {ungroupedEntries.length > 0 && (
+                        <div className="log-group ungrouped">
+                          <div className="group-header ungrouped-header">
+                            <span className="group-key">Ungrouped entries</span>
+                            <span className="group-count">{ungroupedEntries.length} entries</span>
+                          </div>
+                          {ungroupedEntries.map((entry, idx) => (
+                            <div key={idx} className={`virtual-row ${entry.Level ? `level-${entry.Level}` : ''}`}>
+                              {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
+                              {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
+                              {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
+                              {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
+                              {columns.message && <div className="virtual-cell cell-message">{entry.Message || '-'}</div>}
+                              {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
+                              {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : entries.length > 0 ? (
                 wrapText ? (
                   <div className="wrapped-table-body" style={{ maxHeight: containerHeight, overflowY: 'auto' }}>
                     {entries.map((entry, idx) => (

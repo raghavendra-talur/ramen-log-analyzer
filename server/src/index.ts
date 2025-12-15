@@ -151,6 +151,105 @@ app.get('/api/entries', (req, res) => {
   });
 });
 
+// Helper to extract a key from JSON details
+function extractKeyFromDetails(detailsJSON: string, key: string): string | null {
+  if (!detailsJSON) return null;
+  try {
+    const parsed = JSON.parse(detailsJSON);
+    return parsed[key] !== undefined ? String(parsed[key]) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Grouped entries endpoint
+app.get('/api/grouped', (req, res) => {
+  const groupByKey = req.query.groupBy as string;
+  
+  if (!groupByKey) {
+    res.status(400).json({ error: 'groupBy parameter is required' });
+    return;
+  }
+
+  // Apply same filters as /api/entries
+  const filters = {
+    timestamp: (req.query.timestamp as string || '').toLowerCase(),
+    level: req.query.level as string || '',
+    logger: (req.query.logger as string || '').toLowerCase(),
+    filePosition: (req.query.filePosition as string || '').toLowerCase(),
+    message: (req.query.message as string || '').toLowerCase(),
+    details: (req.query.details as string || '').toLowerCase(),
+    filename: (req.query.filename as string || '').toLowerCase(),
+    showInvalid: req.query.showInvalid !== 'false'
+  };
+
+  let filteredEntries = storedEntries.filter(entry => {
+    if (!filters.showInvalid && !entry.IsValid) return false;
+    if (filters.timestamp && !entry.Timestamp?.toLowerCase().includes(filters.timestamp)) return false;
+    if (filters.level && entry.Level !== filters.level) return false;
+    if (filters.logger && !entry.Logger?.toLowerCase().includes(filters.logger)) return false;
+    if (filters.filePosition && !entry.FilePosition?.toLowerCase().includes(filters.filePosition)) return false;
+    if (filters.message && !entry.Message?.toLowerCase().includes(filters.message)) return false;
+    if (filters.details && !entry.DetailsJSON?.toLowerCase().includes(filters.details)) return false;
+    if (filters.filename && !entry.Filename?.toLowerCase().includes(filters.filename)) return false;
+    return true;
+  });
+
+  // Group entries by the specified key
+  const groups = new Map<string, LogEntry[]>();
+  const ungroupedEntries: LogEntry[] = [];
+
+  for (const entry of filteredEntries) {
+    const keyValue = extractKeyFromDetails(entry.DetailsJSON, groupByKey);
+    if (keyValue) {
+      if (!groups.has(keyValue)) {
+        groups.set(keyValue, []);
+      }
+      groups.get(keyValue)!.push(entry);
+    } else {
+      ungroupedEntries.push(entry);
+    }
+  }
+
+  // Convert to array format with summaries
+  const groupedResults: Array<{
+    groupKey: string;
+    keyValue: string;
+    count: number;
+    firstEntry: LogEntry;
+    lastEntry: LogEntry;
+    allEntries: LogEntry[];
+  }> = [];
+
+  for (const [keyValue, entries] of groups) {
+    if (entries.length > 0) {
+      groupedResults.push({
+        groupKey: groupByKey,
+        keyValue,
+        count: entries.length,
+        firstEntry: entries[0],
+        lastEntry: entries[entries.length - 1],
+        allEntries: entries
+      });
+    }
+  }
+
+  // Sort groups by first entry timestamp
+  groupedResults.sort((a, b) => {
+    const aTime = a.firstEntry.Timestamp || '';
+    const bTime = b.firstEntry.Timestamp || '';
+    return aTime.localeCompare(bTime);
+  });
+
+  res.json({
+    groups: groupedResults,
+    ungroupedEntries,
+    totalGroups: groupedResults.length,
+    totalGroupedEntries: filteredEntries.length - ungroupedEntries.length,
+    totalUngrouped: ungroupedEntries.length
+  });
+});
+
 app.get('/api/health', async (req, res) => {
   try {
     const goHealth = await fetch(`${GO_PARSER_URL}/health`);
