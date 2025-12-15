@@ -35,6 +35,15 @@ interface FieldFilters {
   showInvalid: boolean;
 }
 
+interface ColumnVisibility {
+  timestamp: boolean;
+  level: boolean;
+  logger: boolean;
+  filePosition: boolean;
+  message: boolean;
+  details: boolean;
+}
+
 function App() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
@@ -49,6 +58,14 @@ function App() {
     details: '',
     filename: '',
     showInvalid: true
+  });
+  const [columns, setColumns] = useState<ColumnVisibility>({
+    timestamp: true,
+    level: true,
+    logger: true,
+    filePosition: true,
+    message: true,
+    details: true
   });
 
   const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
@@ -153,8 +170,25 @@ function App() {
     });
   };
 
+  const toggleColumn = (column: keyof ColumnVisibility) => {
+    setColumns(c => ({ ...c, [column]: !c[column] }));
+  };
+
+  const showAllColumns = () => {
+    setColumns({
+      timestamp: true,
+      level: true,
+      logger: true,
+      filePosition: true,
+      message: true,
+      details: true
+    });
+  };
+
   const hasActiveFilters = filters.timestamp || filters.level || filters.logger || 
     filters.filePosition || filters.message || filters.details || filters.filename;
+
+  const visibleColumnCount = Object.values(columns).filter(Boolean).length;
 
   return (
     <div className="container">
@@ -201,6 +235,67 @@ function App() {
               <span className="stat-badge" style={{ backgroundColor: '#d4edda', color: '#155724' }}>
                 Showing: {filteredEntries.length}
               </span>
+            </div>
+
+            <div className="columns-section">
+              <div className="columns-header">
+                <h3>Columns</h3>
+                {visibleColumnCount < 6 && (
+                  <button className="clear-btn" onClick={showAllColumns}>
+                    Show All
+                  </button>
+                )}
+              </div>
+              <div className="columns-toggles">
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.timestamp}
+                    onChange={() => toggleColumn('timestamp')}
+                  />
+                  Timestamp
+                </label>
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.level}
+                    onChange={() => toggleColumn('level')}
+                  />
+                  Level
+                </label>
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.logger}
+                    onChange={() => toggleColumn('logger')}
+                  />
+                  Logger
+                </label>
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.filePosition}
+                    onChange={() => toggleColumn('filePosition')}
+                  />
+                  File
+                </label>
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.message}
+                    onChange={() => toggleColumn('message')}
+                  />
+                  Message
+                </label>
+                <label className="column-toggle">
+                  <input
+                    type="checkbox"
+                    checked={columns.details}
+                    onChange={() => toggleColumn('details')}
+                  />
+                  Details
+                </label>
+              </div>
             </div>
 
             <div className="filters-section">
@@ -315,12 +410,12 @@ function App() {
               <table className="log-table">
                 <thead>
                   <tr>
-                    <th>Timestamp</th>
-                    <th>Level</th>
-                    <th>Logger</th>
-                    <th>File</th>
-                    <th>Message</th>
-                    <th>Details</th>
+                    {columns.timestamp && <th>Timestamp</th>}
+                    {columns.level && <th>Level</th>}
+                    {columns.logger && <th>Logger</th>}
+                    {columns.filePosition && <th>File</th>}
+                    {columns.message && <th>Message</th>}
+                    {columns.details && <th>Details</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -329,19 +424,21 @@ function App() {
                       key={idx} 
                       className={`${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
                     >
-                      <td>{entry.Timestamp || '-'}</td>
-                      <td><strong>{entry.Level || '-'}</strong></td>
-                      <td>{entry.Logger || '-'}</td>
-                      <td>{entry.FilePosition || '-'}</td>
-                      <td>
-                        {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
-                        {entry.StackTrace && entry.StackTrace.length > 0 && (
-                          <div className="stack-trace">
-                            {entry.StackTrace.join('\n')}
-                          </div>
-                        )}
-                      </td>
-                      <td className="details-json">{entry.DetailsJSON || '-'}</td>
+                      {columns.timestamp && <td>{entry.Timestamp || '-'}</td>}
+                      {columns.level && <td><strong>{entry.Level || '-'}</strong></td>}
+                      {columns.logger && <td>{entry.Logger || '-'}</td>}
+                      {columns.filePosition && <td>{entry.FilePosition || '-'}</td>}
+                      {columns.message && (
+                        <td>
+                          {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
+                          {entry.StackTrace && entry.StackTrace.length > 0 && (
+                            <div className="stack-trace">
+                              {entry.StackTrace.join('\n')}
+                            </div>
+                          )}
+                        </td>
+                      )}
+                      {columns.details && <td className="details-json">{entry.DetailsJSON || '-'}</td>}
                     </tr>
                   ))}
                 </tbody>
