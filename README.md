@@ -46,7 +46,7 @@ A simple tool for analyzing and visualizing Ramen operator logs. This tool helps
 1. Start the server:
 
    ```bash
-   ./ramen-log-analyzer
+   ./main
    ```
 
 2. Open your web browser and navigate to `http://localhost:8080`
