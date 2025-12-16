@@ -1,0 +1,100 @@
+2025-12-16 11:23:48.18
+19fa5fc4
+User
++ ls -la
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 268 Dec 15 09:49 .gitignore
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 3 runner runner 0 Dec 15 09:36 .local
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 2523 Dec 16 15:37 README.md
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 2821 Dec 15 10:24 package-lock.json
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 3434 Dec 15 15:50 replit.md
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 3 runner runner 0 Dec 15 09:36 parser
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rwxr-xr-x 1 runner runner 139 Dec 16 15:54 deploy-build.sh
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 5 runner runner 0 Dec 16 16:18 client
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 2 runner runner 0 Dec 16 16:18 .upm
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rwxr-xr-x 1 runner runner 107 Dec 16 16:18 deploy-run.sh
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 5 runner runner 0 Dec 15 12:19 server
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 1043 Dec 16 16:11 .replit
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 568 Dec 15 10:24 package.json
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 2573 Dec 15 15:49 main.go
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 8 runner runner 0 Dec 15 10:24 node_modules
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 2 runner runner 0 Dec 15 09:36 models
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+total 2197
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 1074 Dec 15 09:36 LICENSE
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+drwxr-xr-x 3 runner runner 0 Dec 15 09:36 .config
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rwxr-xr-x 1 runner runner 8972415 Dec 16 16:18 main
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rwxr-xr-x 1 runner runner 8972415 Dec 15 15:44 ramen-log-analyzer
+2025-12-16 11:23:48.19
+19fa5fc4
+User
+-rw-r--r-- 1 runner runner 66 Dec 15 09:36 go.mod
+2025-12-16 11:23:48.19
+19fa5fc4
+User
++ sleep 5
+2025-12-16 11:23:48.19
+19fa5fc4
+User
++ ./main
