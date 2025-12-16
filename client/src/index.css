@@ -376,45 +376,116 @@ body {
   border-right: none;
 }
 
-.cell-timestamp {
-  width: 180px;
-  min-width: 180px;
-  flex-shrink: 0;
-}
-
-.cell-level {
-  width: 70px;
-  min-width: 70px;
-  flex-shrink: 0;
-}
-
-.cell-logger {
-  width: 200px;
-  min-width: 200px;
-  flex-shrink: 0;
-}
-
-.cell-filepos {
-  width: 200px;
-  min-width: 200px;
+.cell-timestamp,
+.cell-level,
+.cell-logger,
+.cell-filepos,
+.cell-details,
+.cell-filename {
   flex-shrink: 0;
 }
 
 .cell-message {
   flex: 1;
-  min-width: 200px;
+  min-width: 100px;
 }
 
-.cell-details {
-  width: 200px;
-  min-width: 200px;
-  flex-shrink: 0;
+.resizable-header {
+  position: relative;
+  user-select: none;
 }
 
-.cell-filename {
-  width: 150px;
-  min-width: 150px;
-  flex-shrink: 0;
+.resize-handle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.resize-handle:hover {
+  background: #4a90d9;
+}
+
+.column-context-menu {
+  position: fixed;
+  background: white;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 180px;
+  padding: 8px 0;
+}
+
+.context-menu-header {
+  padding: 8px 12px;
+  font-weight: 600;
+  color: #495057;
+  border-bottom: 1px solid #e9ecef;
+  margin-bottom: 4px;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.context-menu-item:hover {
+  background-color: #f0f4f8;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: #e9ecef;
+  margin: 4px 0;
+}
+
+.context-menu-btn {
+  width: calc(100% - 16px);
+  margin: 4px 8px;
+  padding: 6px 12px;
+  background: #4a90d9;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.context-menu-btn:hover {
+  background: #357abd;
+}
+
+.columns-hint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 15px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  border: 1px solid #e9ecef;
+}
+
+.hint-text {
+  color: #6c757d;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.wrap-toggle-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .no-results {

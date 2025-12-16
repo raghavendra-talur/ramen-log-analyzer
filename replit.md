@@ -35,6 +35,8 @@ Two workflows run simultaneously:
 - **Server-side filtering** - Filter queries processed on server for better performance
 - **Virtual scrolling** (react-window) - Only renders visible rows for smooth performance with large datasets
 - **Wrap Text toggle** - Switch between truncated (fast) and wrapped (full content) display modes
+- **Resizable columns** - Drag column edges to resize, widths are preserved during session
+- **Right-click context menu** - Right-click on column headers to toggle column visibility and wrap text
 - **Group by JSON key** - Group log entries by a key in the Details JSON (e.g., "rid" for request ID)
   - **Fuzzy search dropdown** - Shows all available keys from Details JSON, supports nested keys with dot notation (e.g., drpc.name, placementRef.kind)
   - Collapsible groups showing first and last entries by default

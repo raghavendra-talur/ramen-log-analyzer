@@ -100,6 +100,16 @@ function App() {
     details: true,
     filename: true
   });
+  const [columnWidths, setColumnWidths] = useState({
+    timestamp: 180,
+    level: 70,
+    logger: 200,
+    filePosition: 200,
+    message: 300,
+    details: 200,
+    filename: 150
+  });
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [pageSize, setPageSize] = useState(100);
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,6 +125,7 @@ function App() {
   const [keySearchFilter, setKeySearchFilter] = useState('');
   const [showKeyDropdown, setShowKeyDropdown] = useState(false);
   const keyDropdownRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef<{ column: keyof typeof columnWidths; startX: number; startWidth: number } | null>(null);
 
   const groupStats = useMemo(() => {
     if (!groupingEnabled || groups.length === 0) return null;
@@ -343,6 +354,54 @@ function App() {
     });
   };
 
+  const handleHeaderContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  useEffect(() => {
+    if (contextMenu) {
+      const handleClick = () => setContextMenu(null);
+      document.addEventListener('click', handleClick);
+      return () => document.removeEventListener('click', handleClick);
+    }
+  }, [contextMenu]);
+
+  const handleResizeStart = (e: React.MouseEvent, column: keyof typeof columnWidths) => {
+    e.preventDefault();
+    resizingRef.current = {
+      column,
+      startX: e.clientX,
+      startWidth: columnWidths[column]
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const diff = e.clientX - resizingRef.current.startX;
+      const newWidth = Math.max(50, resizingRef.current.startWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [resizingRef.current!.column]: newWidth }));
+    };
+
+    const handleMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const columnLabels: Record<keyof ColumnVisibility, string> = {
+    timestamp: 'Timestamp',
+    level: 'Level',
+    logger: 'Logger',
+    filePosition: 'File Position',
+    message: 'Message',
+    details: 'Details',
+    filename: 'Source File'
+  };
+
   const handlePageChange = (newPage: number) => {
     if (pagination && newPage >= 1 && newPage <= pagination.totalPages) {
       fetchEntries(newPage, pageSize, filters);
@@ -365,9 +424,6 @@ function App() {
   const hasActiveFilters = filters.timestamp || filters.level || filters.logger || 
     filters.filePosition || filters.message || filters.details || filters.filename;
 
-  const visibleColumnCount = Object.values(columns).filter(Boolean).length;
-  const totalColumnCount = 7;
-
   const levelStats = entries.reduce((acc, e) => {
     if (e.Level) {
       acc[e.Level] = (acc[e.Level] || 0) + 1;
@@ -384,17 +440,17 @@ function App() {
         style={style} 
         className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
       >
-        {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
-        {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
-        {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
-        {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
+        {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
+        {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
+        {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
+        {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
         {columns.message && (
-          <div className="virtual-cell cell-message">
+          <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>
             {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
           </div>
         )}
-        {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
-        {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+        {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
+        {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
       </div>
     );
   };
@@ -529,82 +585,17 @@ function App() {
             </button>
           </div>
 
-          <div className="columns-section">
-              <div className="columns-header">
-                <h3>Columns</h3>
-                {visibleColumnCount < totalColumnCount && (
-                  <button className="clear-btn" onClick={showAllColumns}>
-                    Show All
-                  </button>
-                )}
-              </div>
-              <div className="columns-toggles">
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.timestamp}
-                    onChange={() => toggleColumn('timestamp')}
-                  />
-                  Timestamp
-                </label>
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.level}
-                    onChange={() => toggleColumn('level')}
-                  />
-                  Level
-                </label>
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.logger}
-                    onChange={() => toggleColumn('logger')}
-                  />
-                  Logger
-                </label>
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.filePosition}
-                    onChange={() => toggleColumn('filePosition')}
-                  />
-                  File
-                </label>
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.message}
-                    onChange={() => toggleColumn('message')}
-                  />
-                  Message
-                </label>
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.details}
-                    onChange={() => toggleColumn('details')}
-                  />
-                  Details
-                </label>
-                <label className="column-toggle">
-                  <input
-                    type="checkbox"
-                    checked={columns.filename}
-                    onChange={() => toggleColumn('filename')}
-                  />
-                  Source File
-                </label>
-                <label className="column-toggle wrap-toggle">
-                  <input
-                    type="checkbox"
-                    checked={wrapText}
-                    onChange={() => setWrapText(!wrapText)}
-                  />
-                  Wrap Text
-                </label>
-              </div>
-            </div>
+          <div className="columns-hint">
+            <span className="hint-text">Right-click column headers to toggle columns and adjust settings. Drag column edges to resize.</span>
+            <label className="wrap-toggle-inline">
+              <input
+                type="checkbox"
+                checked={wrapText}
+                onChange={() => setWrapText(!wrapText)}
+              />
+              Wrap Text
+            </label>
+          </div>
 
             <div className="grouping-section">
               <div className="grouping-header">
@@ -927,15 +918,81 @@ function App() {
             )}
 
             <div className="virtual-table" ref={containerRef}>
-              <div className="virtual-header">
-                {columns.timestamp && <div className="virtual-cell cell-timestamp">Timestamp</div>}
-                {columns.level && <div className="virtual-cell cell-level">Level</div>}
-                {columns.logger && <div className="virtual-cell cell-logger">Logger</div>}
-                {columns.filePosition && <div className="virtual-cell cell-filepos">File</div>}
-                {columns.message && <div className="virtual-cell cell-message">Message</div>}
-                {columns.details && <div className="virtual-cell cell-details">Details</div>}
-                {columns.filename && <div className="virtual-cell cell-filename">Source File</div>}
+              <div className="virtual-header" onContextMenu={handleHeaderContextMenu}>
+                {columns.timestamp && (
+                  <div className="virtual-cell cell-timestamp resizable-header" style={{ width: columnWidths.timestamp, minWidth: 50 }}>
+                    Timestamp
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'timestamp')} />
+                  </div>
+                )}
+                {columns.level && (
+                  <div className="virtual-cell cell-level resizable-header" style={{ width: columnWidths.level, minWidth: 50 }}>
+                    Level
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'level')} />
+                  </div>
+                )}
+                {columns.logger && (
+                  <div className="virtual-cell cell-logger resizable-header" style={{ width: columnWidths.logger, minWidth: 50 }}>
+                    Logger
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'logger')} />
+                  </div>
+                )}
+                {columns.filePosition && (
+                  <div className="virtual-cell cell-filepos resizable-header" style={{ width: columnWidths.filePosition, minWidth: 50 }}>
+                    File
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filePosition')} />
+                  </div>
+                )}
+                {columns.message && (
+                  <div className="virtual-cell cell-message resizable-header" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>
+                    Message
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'message')} />
+                  </div>
+                )}
+                {columns.details && (
+                  <div className="virtual-cell cell-details resizable-header" style={{ width: columnWidths.details, minWidth: 50 }}>
+                    Details
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'details')} />
+                  </div>
+                )}
+                {columns.filename && (
+                  <div className="virtual-cell cell-filename resizable-header" style={{ width: columnWidths.filename, minWidth: 50 }}>
+                    Source File
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filename')} />
+                  </div>
+                )}
               </div>
+
+              {contextMenu && (
+                <div 
+                  className="column-context-menu" 
+                  style={{ left: contextMenu.x, top: contextMenu.y }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="context-menu-header">Toggle Columns</div>
+                  {(Object.keys(columns) as (keyof ColumnVisibility)[]).map(col => (
+                    <label key={col} className="context-menu-item">
+                      <input
+                        type="checkbox"
+                        checked={columns[col]}
+                        onChange={() => toggleColumn(col)}
+                      />
+                      {columnLabels[col]}
+                    </label>
+                  ))}
+                  <div className="context-menu-divider" />
+                  <button className="context-menu-btn" onClick={showAllColumns}>Show All Columns</button>
+                  <div className="context-menu-divider" />
+                  <label className="context-menu-item">
+                    <input
+                      type="checkbox"
+                      checked={wrapText}
+                      onChange={() => setWrapText(!wrapText)}
+                    />
+                    Wrap Text
+                  </label>
+                </div>
+              )}
               
               {groupingEnabled ? (
                 <div className="grouped-table-body" style={{ maxHeight: containerHeight, overflowY: 'auto' }}>
@@ -954,23 +1011,23 @@ function App() {
                               <span className="group-count">{group.count} entries</span>
                             </div>
                             <div className={`virtual-row first-entry ${wrapText ? 'wrapped' : ''} ${group.firstEntry.Level ? `level-${group.firstEntry.Level}` : ''}`}>
-                              {columns.timestamp && <div className="virtual-cell cell-timestamp">{group.firstEntry.Timestamp || '-'}</div>}
-                              {columns.level && <div className="virtual-cell cell-level"><strong>{group.firstEntry.Level || '-'}</strong></div>}
-                              {columns.logger && <div className="virtual-cell cell-logger">{group.firstEntry.Logger || '-'}</div>}
-                              {columns.filePosition && <div className="virtual-cell cell-filepos">{group.firstEntry.FilePosition || '-'}</div>}
-                              {columns.message && <div className="virtual-cell cell-message">{group.firstEntry.Message || '-'}</div>}
-                              {columns.details && <div className="virtual-cell cell-details">{group.firstEntry.DetailsJSON || '-'}</div>}
-                              {columns.filename && <div className="virtual-cell cell-filename">{group.firstEntry.Filename || '-'}</div>}
+                              {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{group.firstEntry.Timestamp || '-'}</div>}
+                              {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{group.firstEntry.Level || '-'}</strong></div>}
+                              {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{group.firstEntry.Logger || '-'}</div>}
+                              {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{group.firstEntry.FilePosition || '-'}</div>}
+                              {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{group.firstEntry.Message || '-'}</div>}
+                              {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{group.firstEntry.DetailsJSON || '-'}</div>}
+                              {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{group.firstEntry.Filename || '-'}</div>}
                             </div>
                             {isExpanded && middleEntries.map((entry, idx) => (
                               <div key={idx} className={`virtual-row middle-entry ${wrapText ? 'wrapped' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}>
-                                {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
-                                {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
-                                {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
-                                {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
-                                {columns.message && <div className="virtual-cell cell-message">{entry.Message || '-'}</div>}
-                                {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
-                                {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+                                {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
+                                {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
+                                {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
+                                {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
+                                {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{entry.Message || '-'}</div>}
+                                {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
+                                {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
                               </div>
                             ))}
                             {!isExpanded && middleEntries.length > 0 && (
@@ -980,13 +1037,13 @@ function App() {
                             )}
                             {group.count > 1 && (
                               <div className={`virtual-row last-entry ${wrapText ? 'wrapped' : ''} ${group.lastEntry.Level ? `level-${group.lastEntry.Level}` : ''}`}>
-                                {columns.timestamp && <div className="virtual-cell cell-timestamp">{group.lastEntry.Timestamp || '-'}</div>}
-                                {columns.level && <div className="virtual-cell cell-level"><strong>{group.lastEntry.Level || '-'}</strong></div>}
-                                {columns.logger && <div className="virtual-cell cell-logger">{group.lastEntry.Logger || '-'}</div>}
-                                {columns.filePosition && <div className="virtual-cell cell-filepos">{group.lastEntry.FilePosition || '-'}</div>}
-                                {columns.message && <div className="virtual-cell cell-message">{group.lastEntry.Message || '-'}</div>}
-                                {columns.details && <div className="virtual-cell cell-details">{group.lastEntry.DetailsJSON || '-'}</div>}
-                                {columns.filename && <div className="virtual-cell cell-filename">{group.lastEntry.Filename || '-'}</div>}
+                                {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{group.lastEntry.Timestamp || '-'}</div>}
+                                {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{group.lastEntry.Level || '-'}</strong></div>}
+                                {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{group.lastEntry.Logger || '-'}</div>}
+                                {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{group.lastEntry.FilePosition || '-'}</div>}
+                                {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{group.lastEntry.Message || '-'}</div>}
+                                {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{group.lastEntry.DetailsJSON || '-'}</div>}
+                                {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{group.lastEntry.Filename || '-'}</div>}
                               </div>
                             )}
                           </div>
@@ -1000,13 +1057,13 @@ function App() {
                           </div>
                           {ungroupedEntries.map((entry, idx) => (
                             <div key={idx} className={`virtual-row ${wrapText ? 'wrapped' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}>
-                              {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
-                              {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
-                              {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
-                              {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
-                              {columns.message && <div className="virtual-cell cell-message">{entry.Message || '-'}</div>}
-                              {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
-                              {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+                              {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
+                              {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
+                              {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
+                              {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
+                              {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{entry.Message || '-'}</div>}
+                              {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
+                              {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
                             </div>
                           ))}
                         </div>
@@ -1022,17 +1079,17 @@ function App() {
                         key={idx} 
                         className={`virtual-row wrapped ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
                       >
-                        {columns.timestamp && <div className="virtual-cell cell-timestamp">{entry.Timestamp || '-'}</div>}
-                        {columns.level && <div className="virtual-cell cell-level"><strong>{entry.Level || '-'}</strong></div>}
-                        {columns.logger && <div className="virtual-cell cell-logger">{entry.Logger || '-'}</div>}
-                        {columns.filePosition && <div className="virtual-cell cell-filepos">{entry.FilePosition || '-'}</div>}
+                        {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
+                        {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
+                        {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
+                        {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
                         {columns.message && (
-                          <div className="virtual-cell cell-message">
+                          <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>
                             {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
                           </div>
                         )}
-                        {columns.details && <div className="virtual-cell cell-details">{entry.DetailsJSON || '-'}</div>}
-                        {columns.filename && <div className="virtual-cell cell-filename">{entry.Filename || '-'}</div>}
+                        {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
+                        {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
                       </div>
                     ))}
                   </div>
