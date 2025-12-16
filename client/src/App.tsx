@@ -1252,7 +1252,7 @@ function App() {
                   </div>
                 )}
                 {columns.message && (
-                  <div className="header-cell" style={{ width: columnWidths.message, minWidth: 50 }}>
+                  <div className="header-cell cell-message" style={{ width: columnWidths.message, minWidth: 50 }}>
                     <div className="header-content">
                       <span>Message</span>
                       <span 

@@ -337,6 +337,24 @@ body {
   font-size: 12px;
 }
 
+.header-cell {
+  padding: 8px;
+  border-right: 1px solid #eee;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+
+.header-cell:last-child {
+  border-right: none;
+}
+
+.header-cell.cell-message {
+  flex: 1;
+  min-width: 100px;
+}
+
 .virtual-row {
   display: flex;
   border-bottom: 1px solid #eee;
