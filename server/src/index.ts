@@ -173,7 +173,35 @@ app.get("/api/entries", (req, res) => {
   });
 });
 
-// Helper to extract a key from JSON details
+// Helper to flatten JSON object keys with dot notation
+function flattenKeys(obj: any, prefix: string = ''): string[] {
+  const keys: string[] = [];
+  for (const key of Object.keys(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    const value = obj[key];
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      keys.push(...flattenKeys(value, fullKey));
+    } else {
+      keys.push(fullKey);
+    }
+  }
+  return keys;
+}
+
+// Helper to get nested value using dot notation (e.g., "drpc.name")
+function getNestedValue(obj: any, path: string): any {
+  const parts = path.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+// Helper to extract a key from JSON details (supports nested keys with dot notation)
 function extractKeyFromDetails(
   detailsJSON: string,
   key: string,
@@ -181,11 +209,32 @@ function extractKeyFromDetails(
   if (!detailsJSON) return null;
   try {
     const parsed = JSON.parse(detailsJSON);
-    return parsed[key] !== undefined ? String(parsed[key]) : null;
+    const value = key.includes('.') ? getNestedValue(parsed, key) : parsed[key];
+    return value !== undefined ? String(value) : null;
   } catch {
     return null;
   }
 }
+
+// Endpoint to get all available keys from Details JSON
+app.get('/api/keys', (req, res) => {
+  const allKeys = new Set<string>();
+  
+  for (const entry of storedEntries) {
+    if (!entry.DetailsJSON) continue;
+    try {
+      const parsed = JSON.parse(entry.DetailsJSON);
+      const keys = flattenKeys(parsed);
+      keys.forEach(key => allKeys.add(key));
+    } catch {
+      // Skip invalid JSON
+    }
+  }
+  
+  res.json({
+    keys: Array.from(allKeys).sort()
+  });
+});
 
 // Grouped entries endpoint
 app.get("/api/grouped", (req, res) => {

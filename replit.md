@@ -36,6 +36,7 @@ Two workflows run simultaneously:
 - **Virtual scrolling** (react-window) - Only renders visible rows for smooth performance with large datasets
 - **Wrap Text toggle** - Switch between truncated (fast) and wrapped (full content) display modes
 - **Group by JSON key** - Group log entries by a key in the Details JSON (e.g., "rid" for request ID)
+  - **Fuzzy search dropdown** - Shows all available keys from Details JSON, supports nested keys with dot notation (e.g., drpc.name, placementRef.kind)
   - Collapsible groups showing first and last entries by default
   - Click to expand and see all entries in a group
   - Color-coded entries: green=first, red=last, yellow=middle
@@ -57,6 +58,7 @@ Two workflows run simultaneously:
   - Query params: page, pageSize, timestamp, level, logger, filePosition, message, details, filename, showInvalid
 - `GET /api/grouped` - Get entries grouped by a JSON key from Details
   - Query params: groupBy (required), plus all filter params from /api/entries
+- `GET /api/keys` - Get all available JSON keys from Details fields (supports nested keys with dot notation)
 - `GET /api/health` - Health check for both services
 
 ## Deployment

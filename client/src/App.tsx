@@ -111,6 +111,10 @@ function App() {
   const [ungroupedEntries, setUngroupedEntries] = useState<LogEntry[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showVisualizations, setShowVisualizations] = useState(false);
+  const [availableKeys, setAvailableKeys] = useState<string[]>([]);
+  const [keySearchFilter, setKeySearchFilter] = useState('');
+  const [showKeyDropdown, setShowKeyDropdown] = useState(false);
+  const keyDropdownRef = useRef<HTMLDivElement>(null);
 
   const groupStats = useMemo(() => {
     if (!groupingEnabled || groups.length === 0) return null;
@@ -204,6 +208,35 @@ function App() {
     }
   }, []);
 
+  const fetchAvailableKeys = useCallback(async () => {
+    try {
+      const response = await fetch('/api/keys');
+      const data = await response.json();
+      setAvailableKeys(data.keys || []);
+    } catch (error) {
+      console.error('Failed to fetch available keys:', error);
+    }
+  }, []);
+
+  const filteredKeys = useMemo(() => {
+    if (!keySearchFilter) return availableKeys;
+    const search = keySearchFilter.toLowerCase();
+    return availableKeys.filter(key => 
+      key.toLowerCase().includes(search) ||
+      key.split('.').some(part => part.toLowerCase().includes(search))
+    );
+  }, [availableKeys, keySearchFilter]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (keyDropdownRef.current && !keyDropdownRef.current.contains(event.target as Node)) {
+        setShowKeyDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -235,6 +268,8 @@ function App() {
       });
       setHasData(true);
       
+      await fetchAvailableKeys();
+      
       if (groupingEnabled && groupByKey) {
         await fetchGroupedEntries(groupByKey, filters);
       } else {
@@ -245,7 +280,7 @@ function App() {
     } finally {
       setLoading(false);
     }
-  }, [pageSize, filters, groupingEnabled, groupByKey, fetchEntries, fetchGroupedEntries]);
+  }, [pageSize, filters, groupingEnabled, groupByKey, fetchEntries, fetchGroupedEntries, fetchAvailableKeys]);
 
   useEffect(() => {
     if (!hasData) return;
@@ -260,6 +295,12 @@ function App() {
     
     return () => clearTimeout(debounceTimer);
   }, [filters, pageSize, hasData, fetchEntries, fetchGroupedEntries, groupingEnabled, groupByKey]);
+
+  useEffect(() => {
+    if (groupingEnabled && availableKeys.length === 0) {
+      fetchAvailableKeys();
+    }
+  }, [groupingEnabled, availableKeys.length, fetchAvailableKeys]);
 
   const toggleGroupExpansion = (keyValue: string) => {
     setExpandedGroups(prev => {
@@ -576,14 +617,48 @@ function App() {
                   Group by JSON key
                 </label>
                 {groupingEnabled && (
-                  <div className="grouping-key-input">
+                  <div className="grouping-key-input" ref={keyDropdownRef}>
                     <input
                       type="text"
-                      value={groupByKey}
-                      onChange={e => setGroupByKey(e.target.value)}
-                      placeholder="Enter key (e.g., rid)"
+                      value={keySearchFilter || groupByKey}
+                      onChange={e => {
+                        setKeySearchFilter(e.target.value);
+                        setShowKeyDropdown(true);
+                      }}
+                      onFocus={() => setShowKeyDropdown(true)}
+                      placeholder="Search for key (e.g., rid, drpc.name)"
                       className="filter-input"
                     />
+                    {showKeyDropdown && filteredKeys.length > 0 && (
+                      <div className="key-dropdown">
+                        {filteredKeys.slice(0, 50).map(key => (
+                          <div
+                            key={key}
+                            className={`key-option ${key === groupByKey ? 'selected' : ''}`}
+                            onClick={() => {
+                              setGroupByKey(key);
+                              setKeySearchFilter('');
+                              setShowKeyDropdown(false);
+                            }}
+                          >
+                            {key}
+                          </div>
+                        ))}
+                        {filteredKeys.length > 50 && (
+                          <div className="key-option more-hint">
+                            ...and {filteredKeys.length - 50} more (refine search)
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {showKeyDropdown && filteredKeys.length === 0 && keySearchFilter && (
+                      <div className="key-dropdown">
+                        <div className="key-option no-results">No matching keys found</div>
+                      </div>
+                    )}
+                    {groupByKey && !keySearchFilter && (
+                      <span className="selected-key-badge">Selected: {groupByKey}</span>
+                    )}
                   </div>
                 )}
               </div>
