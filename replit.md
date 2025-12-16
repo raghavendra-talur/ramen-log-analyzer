@@ -38,6 +38,7 @@ Two workflows run simultaneously:
 - **Resizable columns** - Drag column edges to resize, widths are preserved during session
 - **Right-click context menu** - Right-click on column headers to toggle column visibility and wrap text
 - **Column filter icons** - Click the filter icon (⧩) on any column header to set a filter; icon turns blue when filter is active
+- **Help icon** - Click the ? icon in the top right for usage tips
 - **Group by JSON key** - Group log entries by a key in the Details JSON (e.g., "rid" for request ID)
   - **Fuzzy search dropdown** - Shows all available keys from Details JSON, supports nested keys with dot notation (e.g., drpc.name, placementRef.kind)
   - Collapsible groups showing first and last entries by default

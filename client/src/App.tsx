@@ -112,6 +112,7 @@ function App() {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [activeFilterColumn, setActiveFilterColumn] = useState<keyof FieldFilters | null>(null);
   const filterPopoverRef = useRef<HTMLDivElement>(null);
+  const [showHelp, setShowHelp] = useState(false);
   const [pageSize, setPageSize] = useState(100);
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -575,6 +576,9 @@ function App() {
               <span className="stat-badge" style={{ backgroundColor: '#d4edda', color: '#155724' }}>
                 Filtered: {pagination?.totalEntries || 0}
               </span>
+              <span className="stat-badge" style={{ backgroundColor: '#ffe0e0', color: '#721c24' }}>
+                Invalid: {entries.filter(e => !e.IsValid).length}
+              </span>
             </div>
             <form onSubmit={handleUpload} className="load-new-form">
               <input 
@@ -604,16 +608,52 @@ function App() {
             </button>
           </div>
 
-          <div className="columns-hint">
-            <span className="hint-text">Right-click column headers to toggle columns and adjust settings. Drag column edges to resize.</span>
-            <label className="wrap-toggle-inline">
-              <input
-                type="checkbox"
-                checked={wrapText}
-                onChange={() => setWrapText(!wrapText)}
-              />
-              Wrap Text
-            </label>
+          <div className="options-bar">
+            <div className="options-left">
+              <label className="option-toggle">
+                <input
+                  type="checkbox"
+                  checked={wrapText}
+                  onChange={() => setWrapText(!wrapText)}
+                />
+                Wrap Text
+              </label>
+              <label className="option-toggle">
+                <input
+                  type="checkbox"
+                  checked={filters.showInvalid}
+                  onChange={e => setFilters(f => ({ ...f, showInvalid: e.target.checked }))}
+                />
+                Show Invalid Entries
+              </label>
+              {hasActiveFilters && (
+                <button className="clear-filters-btn" onClick={clearFilters}>
+                  Clear All Filters
+                </button>
+              )}
+            </div>
+            <div className="options-right">
+              <span 
+                className="help-icon" 
+                onClick={() => setShowHelp(!showHelp)}
+                title="Help"
+              >?</span>
+              {showHelp && (
+                <div className="help-popover">
+                  <div className="help-header">
+                    <strong>Help</strong>
+                    <span className="help-close" onClick={() => setShowHelp(false)}>×</span>
+                  </div>
+                  <ul className="help-list">
+                    <li><strong>Resize columns:</strong> Drag the right edge of column headers</li>
+                    <li><strong>Toggle columns:</strong> Right-click on column headers</li>
+                    <li><strong>Filter columns:</strong> Click the ⧩ icon on column headers</li>
+                    <li><strong>Filter by level:</strong> Click level badges in the stats bar</li>
+                    <li><strong>Group entries:</strong> Enable "Group by JSON key" and select a key</li>
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
 
             <div className="grouping-section">
@@ -759,113 +799,6 @@ function App() {
               )}
             </div>
 
-            <div className="filters-section">
-              <div className="filters-header">
-                <h3>Filters</h3>
-                {hasActiveFilters && (
-                  <button className="clear-btn" onClick={clearFilters}>
-                    Clear All Filters
-                  </button>
-                )}
-              </div>
-              
-              <div className="filters-grid">
-                <div className="filter-group">
-                  <label>Timestamp</label>
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Filter by timestamp..."
-                    value={filters.timestamp}
-                    onChange={e => setFilters(f => ({ ...f, timestamp: e.target.value }))}
-                  />
-                </div>
-                
-                <div className="filter-group">
-                  <label>Level</label>
-                  <select 
-                    className="filter-select"
-                    value={filters.level}
-                    onChange={e => setFilters(f => ({ ...f, level: e.target.value }))}
-                  >
-                    <option value="">All Levels</option>
-                    <option value="TRACE">TRACE</option>
-                    <option value="DEBUG">DEBUG</option>
-                    <option value="INFO">INFO</option>
-                    <option value="WARN">WARN</option>
-                    <option value="ERROR">ERROR</option>
-                    <option value="FATAL">FATAL</option>
-                  </select>
-                </div>
-                
-                <div className="filter-group">
-                  <label>Logger</label>
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Filter by logger..."
-                    value={filters.logger}
-                    onChange={e => setFilters(f => ({ ...f, logger: e.target.value }))}
-                  />
-                </div>
-                
-                <div className="filter-group">
-                  <label>File Position</label>
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Filter by file:line..."
-                    value={filters.filePosition}
-                    onChange={e => setFilters(f => ({ ...f, filePosition: e.target.value }))}
-                  />
-                </div>
-                
-                <div className="filter-group">
-                  <label>Message</label>
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Filter by message..."
-                    value={filters.message}
-                    onChange={e => setFilters(f => ({ ...f, message: e.target.value }))}
-                  />
-                </div>
-                
-                <div className="filter-group">
-                  <label>Details (JSON)</label>
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Filter by JSON details..."
-                    value={filters.details}
-                    onChange={e => setFilters(f => ({ ...f, details: e.target.value }))}
-                  />
-                </div>
-                
-                <div className="filter-group">
-                  <label>Source File</label>
-                  <input
-                    type="text"
-                    className="filter-input"
-                    placeholder="Filter by source file..."
-                    value={filters.filename}
-                    onChange={e => setFilters(f => ({ ...f, filename: e.target.value }))}
-                  />
-                </div>
-                
-                <div className="filter-group">
-                  <label>&nbsp;</label>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={filters.showInvalid}
-                      onChange={e => setFilters(f => ({ ...f, showInvalid: e.target.checked }))}
-                    />
-                    Show Invalid Entries
-                  </label>
-                </div>
-              </div>
-            </div>
 
             {!groupingEnabled && (
               <div className="pagination-controls">
