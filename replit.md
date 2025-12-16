@@ -1,21 +1,20 @@
 # Ramen Log Analyzer
 
-A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScript/React frontend and Node.js backend, with Go for log parsing.
+A log analysis tool for Ramen operator logs with a Node.js/TypeScript backend and React frontend.
 
 ## Architecture
 
-- **Go Parser Service** (port 8080): Handles log file parsing via HTTP API
-- **Node.js/Express Server** (port 5000): Serves frontend, handles file uploads, proxies to Go parser with server-side filtering
+- **Node.js/Express Server** (port 5000): Serves frontend, handles file uploads, parses logs, and provides API
 - **React + TypeScript Frontend**: Modern SPA with virtual scrolling, filtering, pagination, and log visualization
+- **TypeScript Log Parser**: Integrated parser module that handles log file parsing
 
 ## Project Structure
 
 ```
-├── main.go              # Go parser HTTP service
-├── parser/              # Go log parsing logic
-├── models/              # Go data models
 ├── server/              # Node.js/Express backend
-│   └── src/index.ts     # Express server with server-side filtering
+│   └── src/
+│       ├── index.ts     # Express server with API endpoints
+│       └── parser.ts    # Log parsing logic (ported from Go)
 ├── client/              # React frontend
 │   ├── src/App.tsx      # Main React component with virtual scrolling
 │   ├── src/index.css    # Styles
@@ -24,9 +23,8 @@ A log analysis tool for Ramen operator logs with a hybrid architecture: TypeScri
 
 ## Running Locally
 
-Two workflows run simultaneously:
-1. **Go Parser Service**: `go run .` (port 8080)
-2. **Web Server**: `cd server && npm run dev` (port 5000)
+Single workflow runs the application:
+- **Web Server**: `cd server && npm run dev` (port 5000)
 
 ## Key Features
 
@@ -63,10 +61,10 @@ Two workflows run simultaneously:
 - `GET /api/grouped` - Get entries grouped by a JSON key from Details
   - Query params: groupBy (required), plus all filter params from /api/entries
 - `GET /api/keys` - Get all available JSON keys from Details fields (supports nested keys with dot notation)
-- `GET /api/health` - Health check for both services
+- `GET /api/health` - Health check
 
 ## Deployment
 
-Build command: `go mod tidy && go build -o main . && cd client && npm install && npm run build && cd ../server && npm install && npm run build`
+Build command: `cd client && npm install && npm run build && cd ../server && npm install && npm run build`
 
-Run command: `./main & sleep 2 && node server/dist/index.js`
+Run command: `node server/dist/index.js`

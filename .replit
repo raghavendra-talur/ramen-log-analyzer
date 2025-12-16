@@ -15,23 +15,7 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Go Parser Service"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "Web Server"
-
-[[workflows.workflow]]
-name = "Go Parser Service"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "go run main.go"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
 
 [[workflows.workflow]]
 name = "Web Server"
@@ -58,6 +42,6 @@ localPort = 8080
 externalPort = 8080
 
 [deployment]
-deploymentTarget = "gce"
-run = ["./deploy-run.sh"]
-build = ["./deploy-build.sh"]
+deploymentTarget = "autoscale"
+run = ["node", "server/dist/index.js"]
+build = ["cd client && npm install && npm run build && cd ../server && npm install && npm run build"]

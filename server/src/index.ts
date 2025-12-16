@@ -1,17 +1,15 @@
 import express from "express";
 import cors from "cors";
 import multer from "multer";
-import FormData from "form-data";
-import fetch from "node-fetch";
 import path from "path";
 import { fileURLToPath } from "url";
+import { LogEntry, parseMultipleFiles } from "./parser.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 5000;
-const GO_PARSER_URL = "http://127.0.0.1:8080";
 
 app.use(cors());
 app.use(express.json());
@@ -20,26 +18,6 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 1024 * 1024 * 1024 },
 });
-
-interface LogEntry {
-  Raw: string;
-  Timestamp: string;
-  Level: string;
-  Logger: string;
-  FilePosition: string;
-  Message: string;
-  DetailsJSON: string;
-  IsValid: boolean;
-  ParseError: string;
-  StackTrace: string[];
-  Time: string;
-  Filename: string;
-}
-
-interface ParseResponse {
-  entries: LogEntry[];
-  error?: string;
-}
 
 let storedEntries: LogEntry[] = [];
 
@@ -52,28 +30,13 @@ app.post("/api/parse", upload.array("files"), async (req, res) => {
       return;
     }
 
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append("files", file.buffer, {
-        filename: file.originalname,
-        contentType: file.mimetype,
-      });
-    }
+    const fileContents = files.map(file => ({
+      content: file.buffer.toString('utf-8'),
+      filename: file.originalname,
+    }));
 
-    const response = await fetch(`${GO_PARSER_URL}/parse`, {
-      method: "POST",
-      body: formData as any,
-      headers: formData.getHeaders(),
-    });
+    storedEntries = parseMultipleFiles(fileContents);
 
-    const data = (await response.json()) as ParseResponse;
-
-    if (data.error) {
-      res.status(500).json({ error: data.error });
-      return;
-    }
-
-    storedEntries = data.entries || [];
     res.json({
       success: true,
       totalEntries: storedEntries.length,
@@ -82,11 +45,7 @@ app.post("/api/parse", upload.array("files"), async (req, res) => {
   } catch (error) {
     console.error("Parse error:", error);
     storedEntries = [];
-    res
-      .status(500)
-      .json({
-        error: "Failed to parse files. Is the Go parser service running?",
-      });
+    res.status(500).json({ error: "Failed to parse files." });
   }
 });
 
@@ -345,20 +304,11 @@ app.get("/api/grouped", (req, res) => {
   });
 });
 
-app.get("/api/health", async (req, res) => {
-  try {
-    const goHealth = await fetch(`${GO_PARSER_URL}/health`);
-    const goStatus = await goHealth.json();
-    res.json({
-      server: "ok",
-      parser: goStatus,
-    });
-  } catch (error) {
-    res.json({
-      server: "ok",
-      parser: "unavailable",
-    });
-  }
+app.get("/api/health", (req, res) => {
+  res.json({
+    server: "ok",
+    parser: "integrated",
+  });
 });
 
 app.use(express.static(path.join(__dirname, "../../client/dist")));
