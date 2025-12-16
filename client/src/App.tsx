@@ -10,6 +10,26 @@ import {
   Legend,
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
+import { 
+  LogEntry, 
+  FieldFilters, 
+  Session, 
+  ParseProgressPayload,
+  QueryResultPayload,
+  GroupedResult,
+  WorkerMessage
+} from './lib/types';
+import {
+  initDB,
+  getAllSessions,
+  saveSession,
+  deleteSession,
+  saveChunk,
+  getAllEntriesForSession,
+  saveAvailableKeys,
+  getAvailableKeys,
+  computeFileHash,
+} from './lib/db';
 
 ChartJS.register(
   CategoryScale,
@@ -19,41 +39,6 @@ ChartJS.register(
   Tooltip,
   Legend
 );
-
-interface LogEntry {
-  Raw: string;
-  Timestamp: string;
-  Level: string;
-  Logger: string;
-  FilePosition: string;
-  Message: string;
-  DetailsJSON: string;
-  IsValid: boolean;
-  ParseError: string;
-  StackTrace: string[];
-  Time: string;
-  Filename: string;
-}
-
-interface Pagination {
-  page: number;
-  pageSize: number;
-  totalEntries: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
-}
-
-interface FieldFilters {
-  timestamp: string;
-  level: string;
-  logger: string;
-  filePosition: string;
-  message: string;
-  details: string;
-  filename: string;
-  showInvalid: boolean;
-}
 
 interface ColumnVisibility {
   timestamp: boolean;
@@ -65,22 +50,16 @@ interface ColumnVisibility {
   filename: boolean;
 }
 
-interface LogGroup {
-  groupKey: string;
-  keyValue: string;
-  count: number;
-  firstEntry: LogEntry;
-  lastEntry: LogEntry;
-  allEntries: LogEntry[];
-}
-
 function App() {
   const [entries, setEntries] = useState<LogEntry[]>([]);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [allEntries, setAllEntries] = useState<LogEntry[]>([]);
   const [totalUnfiltered, setTotalUnfiltered] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [status, setStatus] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
   const [hasData, setHasData] = useState(false);
+  const [currentSession, setCurrentSession] = useState<Session | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [parseProgress, setParseProgress] = useState<ParseProgressPayload | null>(null);
   const [filters, setFilters] = useState<FieldFilters>({
     timestamp: '',
     level: '',
@@ -114,14 +93,14 @@ function App() {
   const filterPopoverRef = useRef<HTMLDivElement>(null);
   const [showHelp, setShowHelp] = useState(false);
   const [pageSize, setPageSize] = useState(100);
+  const [currentPage, setCurrentPage] = useState(1);
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(500);
   const [wrapText, setWrapText] = useState(false);
   const [groupingEnabled, setGroupingEnabled] = useState(false);
   const [groupByKey, setGroupByKey] = useState('');
-  const [groups, setGroups] = useState<LogGroup[]>([]);
-  const [ungroupedEntries, setUngroupedEntries] = useState<LogEntry[]>([]);
+  const [groups, setGroups] = useState<GroupedResult[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showVisualizations, setShowVisualizations] = useState(false);
   const [availableKeys, setAvailableKeys] = useState<string[]>([]);
@@ -129,6 +108,238 @@ function App() {
   const [showKeyDropdown, setShowKeyDropdown] = useState(false);
   const keyDropdownRef = useRef<HTMLDivElement>(null);
   const resizingRef = useRef<{ column: keyof typeof columnWidths; startX: number; startWidth: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+
+  const parseWorkerRef = useRef<Worker | null>(null);
+  const queryWorkerRef = useRef<Worker | null>(null);
+
+  useEffect(() => {
+    initDB().then(() => {
+      loadSessions();
+    });
+
+    parseWorkerRef.current = new Worker(
+      new URL('./workers/parseWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+    queryWorkerRef.current = new Worker(
+      new URL('./workers/queryWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+
+    parseWorkerRef.current.onmessage = handleParseWorkerMessage;
+    queryWorkerRef.current.onmessage = handleQueryWorkerMessage;
+
+    return () => {
+      parseWorkerRef.current?.terminate();
+      queryWorkerRef.current?.terminate();
+    };
+  }, []);
+
+  const loadSessions = async () => {
+    const allSessions = await getAllSessions();
+    setSessions(allSessions);
+  };
+
+  const chunkQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const parsedEntriesCountRef = useRef(0);
+  const currentSessionRef = useRef<Session | null>(null);
+
+  const handleParseWorkerMessage = (event: MessageEvent<WorkerMessage>) => {
+    const { type, payload } = event.data;
+
+    switch (type) {
+      case 'PARSE_PROGRESS':
+        setParseProgress(payload);
+        break;
+
+      case 'PARSE_CHUNK_RESULT':
+        chunkQueueRef.current = chunkQueueRef.current.then(async () => {
+          await saveChunk(payload.chunk);
+          parsedEntriesCountRef.current += payload.chunk.entries.length;
+        });
+        break;
+
+      case 'PARSE_COMPLETE':
+        if (payload.fileIndex === payload.totalFiles - 1) {
+          chunkQueueRef.current.then(() => finalizeParsing());
+        }
+        break;
+
+      case 'PARSE_ERROR':
+        setStatus({ type: 'error', message: payload.error });
+        setLoading(false);
+        setParseProgress(null);
+        break;
+
+      case 'KEYS_RESULT':
+        setAvailableKeys(payload.keys);
+        const session = currentSessionRef.current;
+        if (session) {
+          saveAvailableKeys({
+            sessionId: session.id,
+            keys: payload.keys,
+            updatedAt: Date.now(),
+          });
+        }
+        break;
+    }
+  };
+
+  const handleQueryWorkerMessage = (event: MessageEvent<WorkerMessage>) => {
+    const { type, payload } = event.data;
+
+    switch (type) {
+      case 'QUERY_RESULT':
+        const result = payload as QueryResultPayload;
+        setEntries(result.entries);
+        if (result.groups) {
+          setGroups(result.groups);
+        }
+        break;
+
+      case 'KEYS_RESULT':
+        setAvailableKeys(payload.keys);
+        break;
+
+      case 'QUERY_ERROR':
+        console.error('Query error:', payload.error);
+        break;
+    }
+  };
+
+  const finalizeParsing = async () => {
+    const session = currentSessionRef.current;
+    if (!session) return;
+
+    const entries = await getAllEntriesForSession(session.id);
+    setAllEntries(entries);
+    setTotalUnfiltered(entries.length);
+
+    const levelStats: Record<string, number> = {};
+    for (const entry of entries) {
+      if (entry.Level) {
+        levelStats[entry.Level] = (levelStats[entry.Level] || 0) + 1;
+      }
+    }
+
+    const updatedSession: Session = {
+      ...session,
+      status: 'ready',
+      totalEntries: entries.length,
+      levelStats,
+      updatedAt: Date.now(),
+    };
+    await saveSession(updatedSession);
+    setCurrentSession(updatedSession);
+    currentSessionRef.current = updatedSession;
+
+    queryWorkerRef.current?.postMessage({
+      type: 'INIT',
+      payload: { entries },
+    });
+
+    parseWorkerRef.current?.postMessage({ type: 'EXTRACT_KEYS' });
+
+    runQuery(entries, filters, currentPage, pageSize, groupingEnabled ? groupByKey : undefined);
+
+    setLoading(false);
+    setParseProgress(null);
+    setHasData(true);
+    setStatus({
+      type: 'success',
+      message: `Parsed ${entries.length} entries from ${session.filenames.join(', ')}`,
+    });
+
+    loadSessions();
+    parsedEntriesCountRef.current = 0;
+  };
+
+  const runQuery = (
+    sourceEntries: LogEntry[],
+    currentFilters: FieldFilters,
+    page: number,
+    size: number,
+    groupKey?: string
+  ) => {
+    let filtered = sourceEntries.filter(entry => {
+      if (!currentFilters.showInvalid && !entry.IsValid) return false;
+      if (currentFilters.timestamp && !entry.Timestamp?.toLowerCase().includes(currentFilters.timestamp.toLowerCase())) return false;
+      if (currentFilters.level && entry.Level !== currentFilters.level) return false;
+      if (currentFilters.logger && !entry.Logger?.toLowerCase().includes(currentFilters.logger.toLowerCase())) return false;
+      if (currentFilters.filePosition && !entry.FilePosition?.toLowerCase().includes(currentFilters.filePosition.toLowerCase())) return false;
+      if (currentFilters.message && !entry.Message?.toLowerCase().includes(currentFilters.message.toLowerCase())) return false;
+      if (currentFilters.details && !entry.DetailsJSON?.toLowerCase().includes(currentFilters.details.toLowerCase())) return false;
+      if (currentFilters.filename && !entry.Filename?.toLowerCase().includes(currentFilters.filename.toLowerCase())) return false;
+      return true;
+    });
+
+    if (groupKey) {
+      const groupMap = new Map<string, LogEntry[]>();
+      for (const entry of filtered) {
+        const keyValue = extractKeyFromDetails(entry.DetailsJSON, groupKey);
+        if (keyValue) {
+          if (!groupMap.has(keyValue)) groupMap.set(keyValue, []);
+          groupMap.get(keyValue)!.push(entry);
+        }
+      }
+
+      const groupedResults: GroupedResult[] = [];
+      for (const [keyValue, entries] of groupMap) {
+        if (entries.length > 0) {
+          const hasErrors = entries.some(e => e.Level === 'ERROR' || e.Level === 'FATAL');
+          let durationMs: number | undefined;
+          if (entries[0].Time && entries[entries.length - 1].Time) {
+            durationMs = entries[entries.length - 1].Time! - entries[0].Time!;
+          }
+          groupedResults.push({
+            groupKey,
+            keyValue,
+            count: entries.length,
+            firstEntry: entries[0],
+            lastEntry: entries[entries.length - 1],
+            allEntries: entries,
+            hasErrors,
+            durationMs,
+          });
+        }
+      }
+      groupedResults.sort((a, b) => (a.firstEntry.Timestamp || '').localeCompare(b.firstEntry.Timestamp || ''));
+      setGroups(groupedResults);
+      setEntries(filtered);
+    } else {
+      const start = (page - 1) * size;
+      const end = Math.min(start + size, filtered.length);
+      setEntries(filtered.slice(start, end));
+      setGroups([]);
+    }
+  };
+
+  const extractKeyFromDetails = (detailsJSON: string, key: string): string | null => {
+    if (!detailsJSON) return null;
+    try {
+      const parsed = JSON.parse(detailsJSON);
+      const parts = key.split('.');
+      let current = parsed;
+      for (const part of parts) {
+        if (current === null || current === undefined) return null;
+        current = current[part];
+      }
+      return current !== undefined ? String(current) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    if (allEntries.length > 0) {
+      const debounceTimer = setTimeout(() => {
+        runQuery(allEntries, filters, currentPage, pageSize, groupingEnabled ? groupByKey : undefined);
+      }, 150);
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [filters, currentPage, pageSize, groupingEnabled, groupByKey, allEntries]);
 
   const groupStats = useMemo(() => {
     if (!groupingEnabled || groups.length === 0) return null;
@@ -136,13 +347,11 @@ function App() {
     const durations: { keyValue: string; duration: number; hasError: boolean; firstTime: number; lastTime: number }[] = [];
     
     for (const group of groups) {
-      const firstTime = new Date(group.firstEntry.Timestamp).getTime();
-      const lastTime = new Date(group.lastEntry.Timestamp).getTime();
-      const duration = lastTime - firstTime;
-      const hasError = group.allEntries.some(e => e.Level === 'ERROR' || e.Level === 'FATAL');
-      
-      if (!isNaN(firstTime) && !isNaN(lastTime)) {
-        durations.push({ keyValue: group.keyValue, duration, hasError, firstTime, lastTime });
+      const firstTime = group.firstEntry.Time;
+      const lastTime = group.lastEntry.Time;
+      if (firstTime && lastTime) {
+        const duration = lastTime - firstTime;
+        durations.push({ keyValue: group.keyValue, duration, hasError: group.hasErrors, firstTime, lastTime });
       }
     }
 
@@ -173,64 +382,108 @@ function App() {
     return () => window.removeEventListener('resize', updateHeight);
   }, [entries.length]);
 
-  const fetchEntries = useCallback(async (page: number, size: number, currentFilters: FieldFilters) => {
+  const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const files = formData.getAll('files') as File[];
+    
+    if (files.length === 0 || files[0].size === 0) {
+      setStatus({ type: 'error', message: 'Please select at least one file' });
+      return;
+    }
+
+    setLoading(true);
+    setStatus({ type: 'info', message: 'Processing files...' });
+    setParseProgress(null);
+
     try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        pageSize: size.toString(),
-        timestamp: currentFilters.timestamp,
-        level: currentFilters.level,
-        logger: currentFilters.logger,
-        filePosition: currentFilters.filePosition,
-        message: currentFilters.message,
-        details: currentFilters.details,
-        filename: currentFilters.filename,
-        showInvalid: currentFilters.showInvalid.toString()
+      const fileHashes = await Promise.all(files.map(f => computeFileHash(f)));
+      const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+
+      const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const session: Session = {
+        id: sessionId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        filenames: files.map(f => f.name),
+        totalBytes,
+        totalEntries: 0,
+        status: 'parsing',
+        fileHashes,
+        levelStats: {},
+      };
+
+      await saveSession(session);
+      setCurrentSession(session);
+      currentSessionRef.current = session;
+
+      parseWorkerRef.current?.postMessage({
+        type: 'INIT',
+        payload: { sessionId },
       });
-      
-      const response = await fetch(`/api/entries?${params}`);
-      const data = await response.json();
-      setEntries(data.entries || []);
-      setPagination(data.pagination);
-      setTotalUnfiltered(data.totalUnfiltered || 0);
+
+      for (let i = 0; i < files.length; i++) {
+        parseWorkerRef.current?.postMessage({
+          type: 'PARSE_FILE',
+          payload: { file: files[i], fileIndex: i, totalFiles: files.length },
+        });
+      }
     } catch (error) {
-      console.error('Failed to fetch entries:', error);
+      setStatus({ type: 'error', message: (error as Error).message });
+      setLoading(false);
     }
   }, []);
 
-  const fetchGroupedEntries = useCallback(async (key: string, currentFilters: FieldFilters) => {
-    try {
-      const params = new URLSearchParams({
-        groupBy: key,
-        timestamp: currentFilters.timestamp,
-        level: currentFilters.level,
-        logger: currentFilters.logger,
-        filePosition: currentFilters.filePosition,
-        message: currentFilters.message,
-        details: currentFilters.details,
-        filename: currentFilters.filename,
-        showInvalid: currentFilters.showInvalid.toString()
-      });
-      
-      const response = await fetch(`/api/grouped?${params}`);
-      const data = await response.json();
-      setGroups(data.groups || []);
-      setUngroupedEntries(data.ungroupedEntries || []);
-      setExpandedGroups(new Set());
-    } catch (error) {
-      console.error('Failed to fetch grouped entries:', error);
-    }
-  }, []);
+  const loadSession = async (session: Session) => {
+    setLoading(true);
+    setStatus({ type: 'info', message: 'Loading session...' });
 
-  const fetchAvailableKeys = useCallback(async () => {
     try {
-      const response = await fetch('/api/keys');
-      const data = await response.json();
-      setAvailableKeys(data.keys || []);
+      const entries = await getAllEntriesForSession(session.id);
+      const keys = await getAvailableKeys(session.id);
+
+      setAllEntries(entries);
+      setTotalUnfiltered(entries.length);
+      setCurrentSession(session);
+      currentSessionRef.current = session;
+      setAvailableKeys(keys);
+      setHasData(true);
+
+      queryWorkerRef.current?.postMessage({
+        type: 'INIT',
+        payload: { entries },
+      });
+
+      runQuery(entries, filters, 1, pageSize, groupingEnabled ? groupByKey : undefined);
+
+      setStatus({
+        type: 'success',
+        message: `Loaded ${entries.length} entries from ${session.filenames.join(', ')}`,
+      });
     } catch (error) {
-      console.error('Failed to fetch available keys:', error);
+      setStatus({ type: 'error', message: (error as Error).message });
+    } finally {
+      setLoading(false);
     }
-  }, []);
+  };
+
+  const handleDeleteSession = async (sessionId: string) => {
+    await deleteSession(sessionId);
+    loadSessions();
+    if (currentSession?.id === sessionId) {
+      setCurrentSession(null);
+      setHasData(false);
+      setAllEntries([]);
+      setEntries([]);
+    }
+  };
+
+  const cancelParsing = () => {
+    parseWorkerRef.current?.postMessage({ type: 'CANCEL' });
+    setLoading(false);
+    setParseProgress(null);
+    setStatus({ type: 'info', message: 'Parsing cancelled' });
+  };
 
   const filteredKeys = useMemo(() => {
     if (!keySearchFilter) return availableKeys;
@@ -250,71 +503,6 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const handleUpload = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    const files = formData.getAll('files');
-    
-    if (files.length === 0 || (files[0] as File).size === 0) {
-      setStatus({ type: 'error', message: 'Please select at least one file' });
-      return;
-    }
-
-    setLoading(true);
-    setStatus(null);
-
-    try {
-      const response = await fetch('/api/parse', {
-        method: 'POST',
-        body: formData
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || data.error) {
-        throw new Error(data.error || 'Upload failed');
-      }
-
-      setStatus({ 
-        type: 'success', 
-        message: `Parsed ${data.totalEntries} entries from ${data.filenames.join(', ')}` 
-      });
-      setHasData(true);
-      
-      await fetchAvailableKeys();
-      
-      if (groupingEnabled && groupByKey) {
-        await fetchGroupedEntries(groupByKey, filters);
-      } else {
-        await fetchEntries(1, pageSize, filters);
-      }
-    } catch (error) {
-      setStatus({ type: 'error', message: (error as Error).message });
-    } finally {
-      setLoading(false);
-    }
-  }, [pageSize, filters, groupingEnabled, groupByKey, fetchEntries, fetchGroupedEntries, fetchAvailableKeys]);
-
-  useEffect(() => {
-    if (!hasData) return;
-    
-    const debounceTimer = setTimeout(() => {
-      if (groupingEnabled && groupByKey) {
-        fetchGroupedEntries(groupByKey, filters);
-      } else {
-        fetchEntries(1, pageSize, filters);
-      }
-    }, 300);
-    
-    return () => clearTimeout(debounceTimer);
-  }, [filters, pageSize, hasData, fetchEntries, fetchGroupedEntries, groupingEnabled, groupByKey]);
-
-  useEffect(() => {
-    if (groupingEnabled && availableKeys.length === 0) {
-      fetchAvailableKeys();
-    }
-  }, [groupingEnabled, availableKeys.length, fetchAvailableKeys]);
 
   const toggleGroupExpansion = (keyValue: string) => {
     setExpandedGroups(prev => {
@@ -422,9 +610,25 @@ function App() {
     filename: 'Source File'
   };
 
+  const totalFilteredEntries = useMemo(() => {
+    return allEntries.filter(entry => {
+      if (!filters.showInvalid && !entry.IsValid) return false;
+      if (filters.timestamp && !entry.Timestamp?.toLowerCase().includes(filters.timestamp.toLowerCase())) return false;
+      if (filters.level && entry.Level !== filters.level) return false;
+      if (filters.logger && !entry.Logger?.toLowerCase().includes(filters.logger.toLowerCase())) return false;
+      if (filters.filePosition && !entry.FilePosition?.toLowerCase().includes(filters.filePosition.toLowerCase())) return false;
+      if (filters.message && !entry.Message?.toLowerCase().includes(filters.message.toLowerCase())) return false;
+      if (filters.details && !entry.DetailsJSON?.toLowerCase().includes(filters.details.toLowerCase())) return false;
+      if (filters.filename && !entry.Filename?.toLowerCase().includes(filters.filename.toLowerCase())) return false;
+      return true;
+    }).length;
+  }, [allEntries, filters]);
+
+  const totalPages = Math.ceil(totalFilteredEntries / pageSize) || 1;
+
   const handlePageChange = (newPage: number) => {
-    if (pagination && newPage >= 1 && newPage <= pagination.totalPages) {
-      fetchEntries(newPage, pageSize, filters);
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
     }
   };
 
@@ -439,17 +643,69 @@ function App() {
 
   const handlePageSizeChange = (newSize: number) => {
     setPageSize(newSize);
+    setCurrentPage(1);
   };
 
   const hasActiveFilters = filters.timestamp || filters.level || filters.logger || 
     filters.filePosition || filters.message || filters.details || filters.filename;
 
-  const levelStats = entries.reduce((acc, e) => {
-    if (e.Level) {
-      acc[e.Level] = (acc[e.Level] || 0) + 1;
+  const levelStats = useMemo(() => {
+    return allEntries.reduce((acc, e) => {
+      if (e.Level) {
+        acc[e.Level] = (acc[e.Level] || 0) + 1;
+      }
+      return acc;
+    }, {} as Record<string, number>);
+  }, [allEntries]);
+
+  const handleLoadNewFiles = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleExport = () => {
+    setExporting(true);
+    try {
+      const filtered = allEntries.filter(entry => {
+        if (!filters.showInvalid && !entry.IsValid) return false;
+        if (filters.timestamp && !entry.Timestamp?.toLowerCase().includes(filters.timestamp.toLowerCase())) return false;
+        if (filters.level && entry.Level !== filters.level) return false;
+        if (filters.logger && !entry.Logger?.toLowerCase().includes(filters.logger.toLowerCase())) return false;
+        if (filters.filePosition && !entry.FilePosition?.toLowerCase().includes(filters.filePosition.toLowerCase())) return false;
+        if (filters.message && !entry.Message?.toLowerCase().includes(filters.message.toLowerCase())) return false;
+        if (filters.details && !entry.DetailsJSON?.toLowerCase().includes(filters.details.toLowerCase())) return false;
+        if (filters.filename && !entry.Filename?.toLowerCase().includes(filters.filename.toLowerCase())) return false;
+        return true;
+      });
+      
+      const lines = filtered.map(entry => {
+        if (!entry.IsValid) {
+          return entry.Raw || entry.ParseError || '';
+        }
+        const parts: string[] = [];
+        if (columns.timestamp && entry.Timestamp) parts.push(entry.Timestamp);
+        if (columns.level && entry.Level) parts.push(`[${entry.Level}]`);
+        if (columns.logger && entry.Logger) parts.push(entry.Logger);
+        if (columns.filePosition && entry.FilePosition) parts.push(entry.FilePosition);
+        if (columns.message && entry.Message) parts.push(entry.Message);
+        if (columns.details && entry.DetailsJSON) parts.push(entry.DetailsJSON);
+        if (columns.filename && entry.Filename) parts.push(`(${entry.Filename})`);
+        return parts.join(' | ');
+      });
+      
+      const content = lines.join('\n');
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `log-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(false);
     }
-    return acc;
-  }, {} as Record<string, number>);
+  };
 
   const Row = ({ index, style }: { index: number; style: React.CSSProperties }) => {
     const entry = entries[index];
@@ -475,70 +731,13 @@ function App() {
     );
   };
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [exporting, setExporting] = useState(false);
-
-  const handleLoadNewFiles = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleExport = async () => {
-    setExporting(true);
-    try {
-      const params = new URLSearchParams({
-        page: '1',
-        pageSize: '100000',
-        timestamp: filters.timestamp,
-        level: filters.level,
-        logger: filters.logger,
-        filePosition: filters.filePosition,
-        message: filters.message,
-        details: filters.details,
-        filename: filters.filename,
-        showInvalid: filters.showInvalid.toString()
-      });
-      
-      const response = await fetch(`/api/entries?${params}`);
-      const data = await response.json();
-      const allEntries = data.entries || [];
-      
-      const lines = allEntries.map((entry: LogEntry) => {
-        if (!entry.IsValid) {
-          return entry.Raw || entry.ParseError || '';
-        }
-        const parts: string[] = [];
-        if (columns.timestamp && entry.Timestamp) parts.push(entry.Timestamp);
-        if (columns.level && entry.Level) parts.push(`[${entry.Level}]`);
-        if (columns.logger && entry.Logger) parts.push(entry.Logger);
-        if (columns.filePosition && entry.FilePosition) parts.push(entry.FilePosition);
-        if (columns.message && entry.Message) parts.push(entry.Message);
-        if (columns.details && entry.DetailsJSON) parts.push(entry.DetailsJSON);
-        if (columns.filename && entry.Filename) parts.push(`(${entry.Filename})`);
-        return parts.join(' | ');
-      });
-      
-      const content = lines.join('\n');
-      const blob = new Blob([content], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `log-export-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Export failed:', error);
-    } finally {
-      setExporting(false);
-    }
-  };
-
   return (
     <div className="container">
       {!hasData ? (
         <div className="card upload-section upload-section-centered">
-          <h2>Select log files to analyze:</h2>
+          <h2>Ramen Log Analyzer</h2>
+          <p className="privacy-notice">Your files never leave your device. All processing happens locally in your browser.</p>
+          
           <form onSubmit={handleUpload}>
             <input 
               type="file" 
@@ -552,8 +751,46 @@ function App() {
               {loading ? 'Processing...' : 'Upload & Analyze'}
             </button>
           </form>
+
+          {parseProgress && (
+            <div className="progress-section">
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${parseProgress.percent}%` }}></div>
+              </div>
+              <div className="progress-text">
+                {parseProgress.currentFile} - {parseProgress.percent.toFixed(1)}% 
+                ({parseProgress.entriesParsed.toLocaleString()} entries)
+              </div>
+              <button type="button" className="cancel-btn" onClick={cancelParsing}>Cancel</button>
+            </div>
+          )}
+
           {status && (
             <div className={`status ${status.type}`}>{status.message}</div>
+          )}
+
+          {sessions.length > 0 && (
+            <div className="sessions-section">
+              <h3>Previous Sessions</h3>
+              <div className="sessions-list">
+                {sessions.slice(0, 5).map(session => (
+                  <div key={session.id} className="session-item">
+                    <div className="session-info" onClick={() => loadSession(session)}>
+                      <span className="session-files">{session.filenames.join(', ')}</span>
+                      <span className="session-meta">
+                        {session.totalEntries.toLocaleString()} entries | 
+                        {new Date(session.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <button 
+                      className="session-delete" 
+                      onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
+                      title="Delete session"
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       ) : (
@@ -574,10 +811,10 @@ function App() {
                 Total: {totalUnfiltered}
               </span>
               <span className="stat-badge" style={{ backgroundColor: '#d4edda', color: '#155724' }}>
-                Filtered: {pagination?.totalEntries || 0}
+                Filtered: {totalFilteredEntries}
               </span>
               <span className="stat-badge" style={{ backgroundColor: '#ffe0e0', color: '#721c24' }}>
-                Invalid: {entries.filter(e => !e.IsValid).length}
+                Invalid: {allEntries.filter(e => !e.IsValid).length}
               </span>
             </div>
             <form onSubmit={handleUpload} className="load-new-form">
@@ -645,553 +882,496 @@ function App() {
                     <span className="help-close" onClick={() => setShowHelp(false)}>×</span>
                   </div>
                   <ul className="help-list">
+                    <li><strong>Privacy:</strong> Files are processed locally and never leave your device</li>
                     <li><strong>Resize columns:</strong> Drag the right edge of column headers</li>
                     <li><strong>Toggle columns:</strong> Right-click on column headers</li>
-                    <li><strong>Filter columns:</strong> Click the ⧩ icon on column headers</li>
+                    <li><strong>Filter columns:</strong> Click the filter icon on column headers</li>
                     <li><strong>Filter by level:</strong> Click level badges in the stats bar</li>
                     <li><strong>Group entries:</strong> Enable "Group by JSON key" and select a key</li>
+                    <li><strong>Session persistence:</strong> Sessions are saved and can be resumed</li>
                   </ul>
                 </div>
               )}
             </div>
           </div>
 
-            <div className="grouping-section">
-              <div className="grouping-header">
-                <label className="grouping-toggle">
+          <div className="grouping-section">
+            <div className="grouping-header">
+              <label className="grouping-toggle">
+                <input
+                  type="checkbox"
+                  checked={groupingEnabled}
+                  onChange={() => setGroupingEnabled(!groupingEnabled)}
+                />
+                Group by JSON key
+              </label>
+              {groupingEnabled && (
+                <div className="grouping-key-input" ref={keyDropdownRef}>
                   <input
-                    type="checkbox"
-                    checked={groupingEnabled}
-                    onChange={() => setGroupingEnabled(!groupingEnabled)}
+                    type="text"
+                    value={keySearchFilter}
+                    onChange={e => {
+                      setKeySearchFilter(e.target.value);
+                      setShowKeyDropdown(true);
+                      if (e.target.value === '') {
+                        setGroupByKey('');
+                      }
+                    }}
+                    onFocus={() => setShowKeyDropdown(true)}
+                    placeholder="Search for key (e.g., rid, drpc.name)"
+                    className="filter-input"
                   />
-                  Group by JSON key
-                </label>
-                {groupingEnabled && (
-                  <div className="grouping-key-input" ref={keyDropdownRef}>
-                    <input
-                      type="text"
-                      value={keySearchFilter}
-                      onChange={e => {
-                        setKeySearchFilter(e.target.value);
-                        setShowKeyDropdown(true);
-                        if (e.target.value === '') {
-                          setGroupByKey('');
-                        }
-                      }}
-                      onFocus={() => setShowKeyDropdown(true)}
-                      placeholder="Search for key (e.g., rid, drpc.name)"
-                      className="filter-input"
-                    />
-                    {showKeyDropdown && filteredKeys.length > 0 && (
-                      <div className="key-dropdown">
-                        {filteredKeys.slice(0, 50).map(key => (
-                          <div
-                            key={key}
-                            className={`key-option ${key === groupByKey ? 'selected' : ''}`}
-                            onClick={() => {
-                              setGroupByKey(key);
-                              setKeySearchFilter(key);
-                              setShowKeyDropdown(false);
-                            }}
-                          >
-                            {key}
-                          </div>
-                        ))}
-                        {filteredKeys.length > 50 && (
-                          <div className="key-option more-hint">
-                            ...and {filteredKeys.length - 50} more (refine search)
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {showKeyDropdown && filteredKeys.length === 0 && keySearchFilter && (
-                      <div className="key-dropdown">
-                        <div className="key-option no-results">No matching keys found</div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              {groupingEnabled && groups.length > 0 && (
-                <>
-                  <div className="grouping-stats">
-                    <span className="stat-badge" style={{ backgroundColor: '#e3f2fd' }}>
-                      {groups.length} groups
-                    </span>
-                    <span className="stat-badge" style={{ backgroundColor: '#fff3e0' }}>
-                      {ungroupedEntries.length} ungrouped
-                    </span>
-                    <button 
-                      className={`viz-toggle-btn ${showVisualizations ? 'active' : ''}`}
-                      onClick={() => setShowVisualizations(!showVisualizations)}
-                    >
-                      {showVisualizations ? 'Hide Charts' : 'Show Charts'}
-                    </button>
-                  </div>
-                  {showVisualizations && groupStats && (
-                    <div className="visualizations-panel">
-                      <div className="viz-charts-row">
-                        <div className="viz-chart">
-                          <h4>Request Duration Distribution</h4>
-                          <Bar
-                            data={{
-                              labels: Object.keys(groupStats.durationBuckets),
-                              datasets: [{
-                                label: 'Number of Requests',
-                                data: Object.values(groupStats.durationBuckets),
-                                backgroundColor: ['#4caf50', '#8bc34a', '#ffeb3b', '#ff9800', '#f44336'],
-                              }]
-                            }}
-                            options={{
-                              responsive: true,
-                              plugins: {
-                                legend: { display: false },
-                                title: { display: false }
-                              },
-                              scales: {
-                                y: { beginAtZero: true, title: { display: true, text: 'Count' } },
-                                x: { title: { display: true, text: 'Duration' } }
-                              }
-                            }}
-                          />
+                  {showKeyDropdown && filteredKeys.length > 0 && (
+                    <div className="key-dropdown">
+                      {filteredKeys.slice(0, 50).map(key => (
+                        <div
+                          key={key}
+                          className={`key-option ${key === groupByKey ? 'selected' : ''}`}
+                          onClick={() => {
+                            setGroupByKey(key);
+                            setKeySearchFilter(key);
+                            setShowKeyDropdown(false);
+                          }}
+                        >
+                          {key}
                         </div>
-                        <div className="viz-chart">
-                          <h4>Request Durations (Top 20)</h4>
-                          <Bar
-                            data={{
-                              labels: groupStats.durations.slice(0, 20).map(d => d.keyValue.slice(0, 12)),
-                              datasets: [{
-                                label: 'Duration (ms)',
-                                data: groupStats.durations.slice(0, 20).map(d => d.duration),
-                                backgroundColor: groupStats.durations.slice(0, 20).map(d => d.hasError ? '#f44336' : '#2196f3'),
-                              }]
-                            }}
-                            options={{
-                              indexAxis: 'y' as const,
-                              responsive: true,
-                              plugins: {
-                                legend: { display: false },
-                                title: { display: false },
-                                tooltip: {
-                                  callbacks: {
-                                    label: (ctx) => {
-                                      const ms = ctx.raw as number;
-                                      if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
-                                      return `${ms}ms`;
-                                    }
-                                  }
-                                }
-                              },
-                              scales: {
-                                x: { beginAtZero: true, title: { display: true, text: 'Duration (ms)' } }
-                              }
-                            }}
-                          />
-                          <div className="viz-legend">
-                            <span className="legend-item"><span className="legend-color" style={{ backgroundColor: '#2196f3' }}></span> Normal</span>
-                            <span className="legend-item"><span className="legend-color" style={{ backgroundColor: '#f44336' }}></span> Has Errors</span>
-                          </div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   )}
-                </>
+                </div>
+              )}
+              {groupingEnabled && groups.length > 0 && (
+                <button 
+                  className="viz-toggle-btn"
+                  onClick={() => setShowVisualizations(!showVisualizations)}
+                >
+                  {showVisualizations ? 'Hide Charts' : 'Show Charts'}
+                </button>
               )}
             </div>
 
-
-            {!groupingEnabled && (
-              <div className="pagination-controls">
-                <div className="page-size-selector">
-                  <label>Rows per page:</label>
-                  <select 
-                    value={pageSize} 
-                    onChange={e => handlePageSizeChange(parseInt(e.target.value))}
-                  >
-                    <option value={50}>50</option>
-                    <option value={100}>100</option>
-                    <option value={250}>250</option>
-                    <option value={500}>500</option>
-                    <option value={1000}>1000</option>
-                  </select>
+            {groupingEnabled && showVisualizations && groupStats && (
+              <div className="visualizations">
+                <div className="viz-grid">
+                  <div className="viz-card">
+                    <h4>Duration Distribution</h4>
+                    <Bar
+                      data={{
+                        labels: Object.keys(groupStats.durationBuckets),
+                        datasets: [{
+                          label: 'Request Count',
+                          data: Object.values(groupStats.durationBuckets),
+                          backgroundColor: '#4a90d9',
+                        }]
+                      }}
+                      options={{
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true } }
+                      }}
+                    />
+                  </div>
+                  <div className="viz-card">
+                    <h4>Request Durations (Top 20)</h4>
+                    <Bar
+                      data={{
+                        labels: groupStats.durations.slice(0, 20).map(d => d.keyValue.slice(0, 12)),
+                        datasets: [{
+                          label: 'Duration (ms)',
+                          data: groupStats.durations.slice(0, 20).map(d => d.duration),
+                          backgroundColor: groupStats.durations.slice(0, 20).map(d => 
+                            d.hasError ? '#f44336' : '#2196f3'
+                          ),
+                        }]
+                      }}
+                      options={{
+                        indexAxis: 'y',
+                        responsive: true,
+                        plugins: {
+                          legend: { display: false },
+                          tooltip: {
+                            callbacks: {
+                              label: (ctx) => {
+                                const ms = ctx.raw as number;
+                                if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+                                return `${ms}ms`;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          x: { beginAtZero: true, title: { display: true, text: 'Duration (ms)' } }
+                        }
+                      }}
+                    />
+                    <div className="viz-legend">
+                      <span className="legend-item"><span className="legend-color" style={{ backgroundColor: '#2196f3' }}></span> Normal</span>
+                      <span className="legend-item"><span className="legend-color" style={{ backgroundColor: '#f44336' }}></span> Has Errors</span>
+                    </div>
+                  </div>
                 </div>
-
-                {pagination && (
-                  <div className="pagination-info">
-                    Showing {((pagination.page - 1) * pagination.pageSize) + 1} - {Math.min(pagination.page * pagination.pageSize, pagination.totalEntries)} of {pagination.totalEntries}
-                  </div>
-                )}
-
-                {pagination && pagination.totalPages > 1 && (
-                  <div className="pagination-nav">
-                    <button 
-                      disabled={!pagination.hasPrev}
-                      onClick={() => handlePageChange(1)}
-                      title="First page"
-                    >
-                      ««
-                    </button>
-                    <button 
-                      disabled={!pagination.hasPrev}
-                      onClick={() => handlePageChange(pagination.page - 1)}
-                    >
-                      Previous
-                    </button>
-                    <span className="page-indicator">
-                      Page {pagination.page} of {pagination.totalPages}
-                    </span>
-                    <button 
-                      disabled={!pagination.hasNext}
-                      onClick={() => handlePageChange(pagination.page + 1)}
-                    >
-                      Next
-                    </button>
-                    <button 
-                      disabled={!pagination.hasNext}
-                      onClick={() => handlePageChange(pagination.totalPages)}
-                      title="Last page"
-                    >
-                      »»
-                    </button>
-                    <form onSubmit={handleJumpToPage} className="jump-to-page">
-                      <input
-                        type="number"
-                        min={1}
-                        max={pagination.totalPages}
-                        value={jumpToPage}
-                        onChange={e => setJumpToPage(e.target.value)}
-                        placeholder="Go to..."
-                      />
-                      <button type="submit">Go</button>
-                    </form>
-                  </div>
-                )}
               </div>
             )}
 
-            <div className="virtual-table" ref={containerRef}>
-              <div className="virtual-header" onContextMenu={handleHeaderContextMenu}>
+            {groupingEnabled && groups.length > 0 && (
+              <div className="grouped-results">
+                <div className="group-summary">
+                  {groups.length} groups found ({groups.reduce((sum, g) => sum + g.count, 0)} entries)
+                </div>
+                {groups.map(group => (
+                  <div key={group.keyValue} className="group-container">
+                    <div 
+                      className="group-header"
+                      onClick={() => toggleGroupExpansion(group.keyValue)}
+                    >
+                      <span className="group-expand">{expandedGroups.has(group.keyValue) ? '▼' : '▶'}</span>
+                      <span className="group-key">{group.keyValue}</span>
+                      <span className="group-count">({group.count} entries)</span>
+                      {group.hasErrors && <span className="group-error-badge">Has Errors</span>}
+                      {group.durationMs !== undefined && (
+                        <span className="group-duration">
+                          {group.durationMs >= 1000 
+                            ? `${(group.durationMs / 1000).toFixed(2)}s` 
+                            : `${group.durationMs}ms`}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className={`group-entries ${expandedGroups.has(group.keyValue) ? 'expanded' : ''}`}>
+                      {expandedGroups.has(group.keyValue) ? (
+                        group.allEntries.map((entry, idx) => (
+                          <div 
+                            key={entry.id}
+                            className={`group-entry ${idx === 0 ? 'first-entry' : idx === group.allEntries.length - 1 ? 'last-entry' : 'middle-entry'}`}
+                          >
+                            <span className="entry-timestamp">{entry.Timestamp}</span>
+                            <span className={`entry-level level-${entry.Level}`}>{entry.Level}</span>
+                            <span className="entry-message">{entry.Message}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <>
+                          <div className="group-entry first-entry">
+                            <span className="entry-timestamp">{group.firstEntry.Timestamp}</span>
+                            <span className={`entry-level level-${group.firstEntry.Level}`}>{group.firstEntry.Level}</span>
+                            <span className="entry-message">{group.firstEntry.Message}</span>
+                          </div>
+                          {group.count > 2 && (
+                            <div className="group-entry-ellipsis">... {group.count - 2} more entries ...</div>
+                          )}
+                          {group.count > 1 && (
+                            <div className="group-entry last-entry">
+                              <span className="entry-timestamp">{group.lastEntry.Timestamp}</span>
+                              <span className={`entry-level level-${group.lastEntry.Level}`}>{group.lastEntry.Level}</span>
+                              <span className="entry-message">{group.lastEntry.Message}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {!groupingEnabled && (
+            <div className="pagination-controls">
+              <div className="page-size-selector">
+                <label>Rows per page:</label>
+                <select 
+                  value={pageSize} 
+                  onChange={e => handlePageSizeChange(parseInt(e.target.value))}
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                  <option value={1000}>1000</option>
+                </select>
+              </div>
+
+              <div className="pagination-info">
+                Showing {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalFilteredEntries)} of {totalFilteredEntries}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="pagination-nav">
+                  <button 
+                    disabled={currentPage <= 1}
+                    onClick={() => handlePageChange(1)}
+                    title="First page"
+                  >
+                    ««
+                  </button>
+                  <button 
+                    disabled={currentPage <= 1}
+                    onClick={() => handlePageChange(currentPage - 1)}
+                  >
+                    «
+                  </button>
+                  <span className="page-indicator">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button 
+                    disabled={currentPage >= totalPages}
+                    onClick={() => handlePageChange(currentPage + 1)}
+                  >
+                    »
+                  </button>
+                  <button 
+                    disabled={currentPage >= totalPages}
+                    onClick={() => handlePageChange(totalPages)}
+                    title="Last page"
+                  >
+                    »»
+                  </button>
+                  <form onSubmit={handleJumpToPage} className="jump-form">
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalPages}
+                      value={jumpToPage}
+                      onChange={e => setJumpToPage(e.target.value)}
+                      placeholder="Go to..."
+                      className="jump-input"
+                    />
+                    <button type="submit" className="jump-btn">Go</button>
+                  </form>
+                </div>
+              )}
+            </div>
+          )}
+
+          {!groupingEnabled && (
+            <>
+              <div 
+                className={`table-header ${wrapText ? 'wrap-text' : ''}`}
+                onContextMenu={handleHeaderContextMenu}
+              >
                 {columns.timestamp && (
-                  <div className="virtual-cell cell-timestamp resizable-header" style={{ width: columnWidths.timestamp, minWidth: 50 }}>
-                    <span className="header-content">
+                  <div className="header-cell" style={{ width: columnWidths.timestamp, minWidth: 50 }}>
+                    <div className="header-content">
                       <span>Timestamp</span>
                       <span 
                         className={`filter-icon ${filters.timestamp ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'timestamp')}
-                        title="Filter Timestamp"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'timestamp')}></div>
                     {activeFilterColumn === 'timestamp' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                      <div className="filter-popover" ref={filterPopoverRef}>
                         <input
                           type="text"
                           value={filters.timestamp}
-                          onChange={(e) => setFilters(f => ({ ...f, timestamp: e.target.value }))}
+                          onChange={e => setFilters(f => ({ ...f, timestamp: e.target.value }))}
                           placeholder="Filter timestamp..."
+                          className="filter-input"
                           autoFocus
                         />
-                        <button onClick={() => { setFilters(f => ({ ...f, timestamp: '' })); setActiveFilterColumn(null); }}>Clear</button>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'timestamp')} />
                   </div>
                 )}
                 {columns.level && (
-                  <div className="virtual-cell cell-level resizable-header" style={{ width: columnWidths.level, minWidth: 50 }}>
-                    <span className="header-content">
+                  <div className="header-cell" style={{ width: columnWidths.level, minWidth: 50 }}>
+                    <div className="header-content">
                       <span>Level</span>
                       <span 
                         className={`filter-icon ${filters.level ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'level')}
-                        title="Filter Level"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'level')}></div>
                     {activeFilterColumn === 'level' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="text"
+                      <div className="filter-popover" ref={filterPopoverRef}>
+                        <select
                           value={filters.level}
-                          onChange={(e) => setFilters(f => ({ ...f, level: e.target.value }))}
-                          placeholder="Filter level..."
+                          onChange={e => setFilters(f => ({ ...f, level: e.target.value }))}
+                          className="filter-select"
                           autoFocus
-                        />
-                        <button onClick={() => { setFilters(f => ({ ...f, level: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                        >
+                          <option value="">All Levels</option>
+                          <option value="TRACE">TRACE</option>
+                          <option value="DEBUG">DEBUG</option>
+                          <option value="INFO">INFO</option>
+                          <option value="WARN">WARN</option>
+                          <option value="ERROR">ERROR</option>
+                          <option value="FATAL">FATAL</option>
+                        </select>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'level')} />
                   </div>
                 )}
                 {columns.logger && (
-                  <div className="virtual-cell cell-logger resizable-header" style={{ width: columnWidths.logger, minWidth: 50 }}>
-                    <span className="header-content">
+                  <div className="header-cell" style={{ width: columnWidths.logger, minWidth: 50 }}>
+                    <div className="header-content">
                       <span>Logger</span>
                       <span 
                         className={`filter-icon ${filters.logger ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'logger')}
-                        title="Filter Logger"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'logger')}></div>
                     {activeFilterColumn === 'logger' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                      <div className="filter-popover" ref={filterPopoverRef}>
                         <input
                           type="text"
                           value={filters.logger}
-                          onChange={(e) => setFilters(f => ({ ...f, logger: e.target.value }))}
+                          onChange={e => setFilters(f => ({ ...f, logger: e.target.value }))}
                           placeholder="Filter logger..."
+                          className="filter-input"
                           autoFocus
                         />
-                        <button onClick={() => { setFilters(f => ({ ...f, logger: '' })); setActiveFilterColumn(null); }}>Clear</button>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'logger')} />
                   </div>
                 )}
                 {columns.filePosition && (
-                  <div className="virtual-cell cell-filepos resizable-header" style={{ width: columnWidths.filePosition, minWidth: 50 }}>
-                    <span className="header-content">
-                      <span>File</span>
+                  <div className="header-cell" style={{ width: columnWidths.filePosition, minWidth: 50 }}>
+                    <div className="header-content">
+                      <span>File Position</span>
                       <span 
                         className={`filter-icon ${filters.filePosition ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'filePosition')}
-                        title="Filter File Position"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filePosition')}></div>
                     {activeFilterColumn === 'filePosition' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                      <div className="filter-popover" ref={filterPopoverRef}>
                         <input
                           type="text"
                           value={filters.filePosition}
-                          onChange={(e) => setFilters(f => ({ ...f, filePosition: e.target.value }))}
-                          placeholder="Filter file position..."
+                          onChange={e => setFilters(f => ({ ...f, filePosition: e.target.value }))}
+                          placeholder="Filter file:line..."
+                          className="filter-input"
                           autoFocus
                         />
-                        <button onClick={() => { setFilters(f => ({ ...f, filePosition: '' })); setActiveFilterColumn(null); }}>Clear</button>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filePosition')} />
                   </div>
                 )}
                 {columns.message && (
-                  <div className="virtual-cell cell-message resizable-header" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>
-                    <span className="header-content">
+                  <div className="header-cell" style={{ width: columnWidths.message, minWidth: 50 }}>
+                    <div className="header-content">
                       <span>Message</span>
                       <span 
                         className={`filter-icon ${filters.message ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'message')}
-                        title="Filter Message"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'message')}></div>
                     {activeFilterColumn === 'message' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                      <div className="filter-popover" ref={filterPopoverRef}>
                         <input
                           type="text"
                           value={filters.message}
-                          onChange={(e) => setFilters(f => ({ ...f, message: e.target.value }))}
+                          onChange={e => setFilters(f => ({ ...f, message: e.target.value }))}
                           placeholder="Filter message..."
+                          className="filter-input"
                           autoFocus
                         />
-                        <button onClick={() => { setFilters(f => ({ ...f, message: '' })); setActiveFilterColumn(null); }}>Clear</button>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'message')} />
                   </div>
                 )}
                 {columns.details && (
-                  <div className="virtual-cell cell-details resizable-header" style={{ width: columnWidths.details, minWidth: 50 }}>
-                    <span className="header-content">
+                  <div className="header-cell" style={{ width: columnWidths.details, minWidth: 50 }}>
+                    <div className="header-content">
                       <span>Details</span>
                       <span 
                         className={`filter-icon ${filters.details ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'details')}
-                        title="Filter Details"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'details')}></div>
                     {activeFilterColumn === 'details' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                      <div className="filter-popover" ref={filterPopoverRef}>
                         <input
                           type="text"
                           value={filters.details}
-                          onChange={(e) => setFilters(f => ({ ...f, details: e.target.value }))}
-                          placeholder="Filter details..."
+                          onChange={e => setFilters(f => ({ ...f, details: e.target.value }))}
+                          placeholder="Filter JSON details..."
+                          className="filter-input"
                           autoFocus
                         />
-                        <button onClick={() => { setFilters(f => ({ ...f, details: '' })); setActiveFilterColumn(null); }}>Clear</button>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'details')} />
                   </div>
                 )}
                 {columns.filename && (
-                  <div className="virtual-cell cell-filename resizable-header" style={{ width: columnWidths.filename, minWidth: 50 }}>
-                    <span className="header-content">
+                  <div className="header-cell" style={{ width: columnWidths.filename, minWidth: 50 }}>
+                    <div className="header-content">
                       <span>Source File</span>
                       <span 
                         className={`filter-icon ${filters.filename ? 'active' : ''}`}
                         onClick={(e) => handleFilterIconClick(e, 'filename')}
-                        title="Filter Source File"
                       >⧩</span>
-                    </span>
+                    </div>
+                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filename')}></div>
                     {activeFilterColumn === 'filename' && (
-                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                      <div className="filter-popover" ref={filterPopoverRef}>
                         <input
                           type="text"
                           value={filters.filename}
-                          onChange={(e) => setFilters(f => ({ ...f, filename: e.target.value }))}
+                          onChange={e => setFilters(f => ({ ...f, filename: e.target.value }))}
                           placeholder="Filter source file..."
+                          className="filter-input"
                           autoFocus
                         />
-                        <button onClick={() => { setFilters(f => ({ ...f, filename: '' })); setActiveFilterColumn(null); }}>Clear</button>
                       </div>
                     )}
-                    <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filename')} />
                   </div>
                 )}
               </div>
 
               {contextMenu && (
                 <div 
-                  className="column-context-menu" 
+                  className="context-menu"
                   style={{ left: contextMenu.x, top: contextMenu.y }}
-                  onClick={(e) => e.stopPropagation()}
                 >
                   <div className="context-menu-header">Toggle Columns</div>
-                  {(Object.keys(columns) as (keyof ColumnVisibility)[]).map(col => (
-                    <label key={col} className="context-menu-item">
-                      <input
-                        type="checkbox"
-                        checked={columns[col]}
-                        onChange={() => toggleColumn(col)}
-                      />
-                      {columnLabels[col]}
-                    </label>
+                  {Object.entries(columnLabels).map(([key, label]) => (
+                    <div 
+                      key={key}
+                      className="context-menu-item"
+                      onClick={() => toggleColumn(key as keyof ColumnVisibility)}
+                    >
+                      <span className="context-menu-check">{columns[key as keyof ColumnVisibility] ? '✓' : ''}</span>
+                      {label}
+                    </div>
                   ))}
-                  <div className="context-menu-divider" />
-                  <button className="context-menu-btn" onClick={showAllColumns}>Show All Columns</button>
-                  <div className="context-menu-divider" />
-                  <label className="context-menu-item">
-                    <input
-                      type="checkbox"
-                      checked={wrapText}
-                      onChange={() => setWrapText(!wrapText)}
-                    />
-                    Wrap Text
-                  </label>
-                </div>
-              )}
-              
-              {groupingEnabled ? (
-                <div className="grouped-table-body" style={{ maxHeight: containerHeight, overflowY: 'auto' }}>
-                  {groups.length === 0 && ungroupedEntries.length === 0 ? (
-                    <div className="no-results">No entries match your filters</div>
-                  ) : (
-                    <>
-                      {groups.map((group) => {
-                        const isExpanded = expandedGroups.has(group.keyValue);
-                        const middleEntries = group.allEntries.slice(1, -1);
-                        return (
-                          <div key={group.keyValue} className="log-group">
-                            <div className="group-header" onClick={() => toggleGroupExpansion(group.keyValue)}>
-                              <span className="expand-icon">{isExpanded ? '▼' : '▶'}</span>
-                              <span className="group-key">{groupByKey}: {group.keyValue}</span>
-                              <span className="group-count">{group.count} entries</span>
-                            </div>
-                            <div className={`virtual-row first-entry ${wrapText ? 'wrapped' : ''} ${group.firstEntry.Level ? `level-${group.firstEntry.Level}` : ''}`}>
-                              {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{group.firstEntry.Timestamp || '-'}</div>}
-                              {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{group.firstEntry.Level || '-'}</strong></div>}
-                              {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{group.firstEntry.Logger || '-'}</div>}
-                              {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{group.firstEntry.FilePosition || '-'}</div>}
-                              {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{group.firstEntry.Message || '-'}</div>}
-                              {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{group.firstEntry.DetailsJSON || '-'}</div>}
-                              {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{group.firstEntry.Filename || '-'}</div>}
-                            </div>
-                            {isExpanded && middleEntries.map((entry, idx) => (
-                              <div key={idx} className={`virtual-row middle-entry ${wrapText ? 'wrapped' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}>
-                                {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
-                                {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
-                                {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
-                                {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
-                                {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{entry.Message || '-'}</div>}
-                                {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
-                                {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
-                              </div>
-                            ))}
-                            {!isExpanded && middleEntries.length > 0 && (
-                              <div className="collapsed-indicator" onClick={() => toggleGroupExpansion(group.keyValue)}>
-                                ... {middleEntries.length} more entries (click to expand)
-                              </div>
-                            )}
-                            {group.count > 1 && (
-                              <div className={`virtual-row last-entry ${wrapText ? 'wrapped' : ''} ${group.lastEntry.Level ? `level-${group.lastEntry.Level}` : ''}`}>
-                                {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{group.lastEntry.Timestamp || '-'}</div>}
-                                {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{group.lastEntry.Level || '-'}</strong></div>}
-                                {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{group.lastEntry.Logger || '-'}</div>}
-                                {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{group.lastEntry.FilePosition || '-'}</div>}
-                                {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{group.lastEntry.Message || '-'}</div>}
-                                {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{group.lastEntry.DetailsJSON || '-'}</div>}
-                                {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{group.lastEntry.Filename || '-'}</div>}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      {ungroupedEntries.length > 0 && (
-                        <div className="log-group ungrouped">
-                          <div className="group-header ungrouped-header">
-                            <span className="group-key">Ungrouped entries</span>
-                            <span className="group-count">{ungroupedEntries.length} entries</span>
-                          </div>
-                          {ungroupedEntries.map((entry, idx) => (
-                            <div key={idx} className={`virtual-row ${wrapText ? 'wrapped' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}>
-                              {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
-                              {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
-                              {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
-                              {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
-                              {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{entry.Message || '-'}</div>}
-                              {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
-                              {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              ) : entries.length > 0 ? (
-                wrapText ? (
-                  <div className="wrapped-table-body" style={{ maxHeight: containerHeight, overflowY: 'auto' }}>
-                    {entries.map((entry, idx) => (
-                      <div 
-                        key={idx} 
-                        className={`virtual-row wrapped ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''}`}
-                      >
-                        {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
-                        {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
-                        {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
-                        {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
-                        {columns.message && (
-                          <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>
-                            {entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}
-                          </div>
-                        )}
-                        {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
-                        {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
-                      </div>
-                    ))}
+                  <div className="context-menu-divider"></div>
+                  <div className="context-menu-item" onClick={showAllColumns}>
+                    Show All Columns
                   </div>
-                ) : (
-                  <List
-                    height={containerHeight}
-                    itemCount={entries.length}
-                    itemSize={40}
-                    width="100%"
-                  >
-                    {Row}
-                  </List>
-                )
-              ) : (
-                <div className="no-results">No entries match your filters</div>
+                  <div className="context-menu-divider"></div>
+                  <div className="context-menu-item" onClick={() => setWrapText(!wrapText)}>
+                    <span className="context-menu-check">{wrapText ? '✓' : ''}</span>
+                    Wrap Text
+                  </div>
+                </div>
               )}
-            </div>
+
+              <div 
+                className={`virtual-table ${wrapText ? 'wrap-text' : ''}`}
+                ref={containerRef}
+              >
+                <List
+                  height={containerHeight}
+                  itemCount={entries.length}
+                  itemSize={wrapText ? 80 : 32}
+                  width="100%"
+                >
+                  {Row}
+                </List>
+              </div>
+            </>
+          )}
+
+          {status && (
+            <div className={`status-floating ${status.type}`}>{status.message}</div>
+          )}
         </div>
       )}
     </div>

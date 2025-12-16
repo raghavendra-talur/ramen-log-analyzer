@@ -21,13 +21,13 @@ args = "Web Server"
 name = "Web Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd server && npm run dev"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd client && npm run dev"
+waitForPort = 5000
 
 [[ports]]
 localPort = 3001
@@ -42,6 +42,7 @@ localPort = 8080
 externalPort = 8080
 
 [deployment]
-deploymentTarget = "autoscale"
+deploymentTarget = "static"
 run = ["node", "server/dist/index.js"]
-build = ["cd client && npm install && npm run build && cd ../server && npm install && npm run build"]
+build = ["cd client && npm install && npm run build"]
+publicDir = "client/dist"

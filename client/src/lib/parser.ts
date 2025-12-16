@@ -1,17 +1,4 @@
-export interface LogEntry {
-  Raw: string;
-  Timestamp: string;
-  Level: string;
-  Logger: string;
-  FilePosition: string;
-  Message: string;
-  DetailsJSON: string;
-  IsValid: boolean;
-  ParseError: string;
-  StackTrace: string[];
-  Time: Date | null;
-  Filename: string;
-}
+import { LogEntry } from './types';
 
 const dateTimeRegex = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}(?:Z|[-+]\d{4})$/;
 const logLevelRegex = /^(?:TRACE|DEBUG|INFO|WARN|ERROR|FATAL)$/;
@@ -44,8 +31,11 @@ function expectedFieldType(partID: number): FieldType {
   }
 }
 
-export function parseLine(line: string, fileName: string): LogEntry {
+let entryCounter = 0;
+
+export function parseLine(line: string, fileName: string, chunkIndex: number): LogEntry {
   const entry: LogEntry = {
+    id: `${fileName}-${chunkIndex}-${entryCounter++}`,
     Raw: '',
     Timestamp: '',
     Level: '',
@@ -58,13 +48,14 @@ export function parseLine(line: string, fileName: string): LogEntry {
     StackTrace: [],
     Time: null,
     Filename: fileName,
+    chunkIndex,
   };
 
   const parts = line.split('\t');
   if (parts.length < 4) {
     entry.IsValid = false;
     entry.Raw = line;
-    entry.ParseError = `Invalid number of fields in line, lenparts: ${parts.length}, parts: ${JSON.stringify(parts)}`;
+    entry.ParseError = `Invalid number of fields in line, lenparts: ${parts.length}`;
     return entry;
   }
 
@@ -90,7 +81,7 @@ export function parseLine(line: string, fileName: string): LogEntry {
       }
       entry.IsValid = false;
       entry.Raw = line;
-      entry.ParseError += `Field type mismatch at position ${i}, part: ${part}, expected type: ${expected}, determined type: ${fieldType}. `;
+      entry.ParseError += `Field type mismatch at position ${i}. `;
       continue;
     }
 
@@ -107,7 +98,7 @@ export function parseLine(line: string, fileName: string): LogEntry {
       entry.DetailsJSON = finalParts[5];
     }
     try {
-      entry.Time = new Date(entry.Timestamp);
+      entry.Time = new Date(entry.Timestamp).getTime();
     } catch {
       entry.Time = null;
     }
@@ -116,51 +107,81 @@ export function parseLine(line: string, fileName: string): LogEntry {
   return entry;
 }
 
-export function parseFileContent(content: string, fileName: string): LogEntry[] {
-  const lines = content.split('\n');
-  const logEntries: LogEntry[] = [];
+export function parseChunk(text: string, fileName: string, chunkIndex: number): { entries: LogEntry[]; lastErrorHit: boolean } {
+  const lines = text.split('\n');
+  const entries: LogEntry[] = [];
   let errorHit = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed === '') continue;
 
-    const entry = parseLine(line, fileName);
+    const entry = parseLine(line, fileName, chunkIndex);
 
     if (!entry.IsValid) {
-      if (errorHit && logEntries.length > 0) {
-        logEntries[logEntries.length - 1].StackTrace.push(line);
+      if (errorHit && entries.length > 0) {
+        entries[entries.length - 1].StackTrace.push(line);
       } else {
-        logEntries.push(entry);
+        entries.push(entry);
       }
     } else {
       errorHit = entry.Level === 'ERROR';
-      logEntries.push(entry);
+      entries.push(entry);
     }
   }
 
-  return logEntries;
+  return { entries, lastErrorHit: errorHit };
 }
 
-export function parseMultipleFiles(files: Array<{ content: string; filename: string }>): LogEntry[] {
-  let allEntries: LogEntry[] = [];
-
-  for (const file of files) {
-    const entries = parseFileContent(file.content, file.filename);
-    console.log(`Parsed file: ${file.filename} with ${entries.length} entries`);
-    allEntries = allEntries.concat(entries);
+export function flattenKeys(obj: any, prefix: string = ''): string[] {
+  const keys: string[] = [];
+  for (const key of Object.keys(obj)) {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    const value = obj[key];
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      keys.push(...flattenKeys(value, fullKey));
+    } else {
+      keys.push(fullKey);
+    }
   }
+  return keys;
+}
 
-  allEntries.sort((a, b) => {
-    if (!a.IsValid && !b.IsValid) return 0;
-    if (!a.IsValid) return 1;
-    if (!b.IsValid) return -1;
+export function getNestedValue(obj: any, path: string): any {
+  const parts = path.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current === null || current === undefined || typeof current !== 'object') {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
 
-    const aTime = a.Time?.getTime() || 0;
-    const bTime = b.Time?.getTime() || 0;
-    return aTime - bTime;
-  });
+export function extractKeyFromDetails(detailsJSON: string, key: string): string | null {
+  if (!detailsJSON) return null;
+  try {
+    const parsed = JSON.parse(detailsJSON);
+    const value = key.includes('.') ? getNestedValue(parsed, key) : parsed[key];
+    return value !== undefined ? String(value) : null;
+  } catch {
+    return null;
+  }
+}
 
-  console.log(`Total entries after sorting: ${allEntries.length}`);
-  return allEntries;
+export function extractAllKeysFromEntries(entries: LogEntry[]): string[] {
+  const allKeys = new Set<string>();
+  
+  for (const entry of entries) {
+    if (!entry.DetailsJSON) continue;
+    try {
+      const parsed = JSON.parse(entry.DetailsJSON);
+      const keys = flattenKeys(parsed);
+      keys.forEach(key => allKeys.add(key));
+    } catch {
+    }
+  }
+  
+  return Array.from(allKeys).sort();
 }
