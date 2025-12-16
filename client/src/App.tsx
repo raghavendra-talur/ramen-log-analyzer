@@ -110,6 +110,8 @@ function App() {
     filename: 150
   });
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [activeFilterColumn, setActiveFilterColumn] = useState<keyof FieldFilters | null>(null);
+  const filterPopoverRef = useRef<HTMLDivElement>(null);
   const [pageSize, setPageSize] = useState(100);
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -366,6 +368,23 @@ function App() {
       return () => document.removeEventListener('click', handleClick);
     }
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (activeFilterColumn) {
+      const handleClickOutside = (e: MouseEvent) => {
+        if (filterPopoverRef.current && !filterPopoverRef.current.contains(e.target as Node)) {
+          setActiveFilterColumn(null);
+        }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [activeFilterColumn]);
+
+  const handleFilterIconClick = (e: React.MouseEvent, column: keyof FieldFilters) => {
+    e.stopPropagation();
+    setActiveFilterColumn(activeFilterColumn === column ? null : column);
+  };
 
   const handleResizeStart = (e: React.MouseEvent, column: keyof typeof columnWidths) => {
     e.preventDefault();
@@ -921,43 +940,176 @@ function App() {
               <div className="virtual-header" onContextMenu={handleHeaderContextMenu}>
                 {columns.timestamp && (
                   <div className="virtual-cell cell-timestamp resizable-header" style={{ width: columnWidths.timestamp, minWidth: 50 }}>
-                    Timestamp
+                    <span className="header-content">
+                      <span>Timestamp</span>
+                      <span 
+                        className={`filter-icon ${filters.timestamp ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'timestamp')}
+                        title="Filter Timestamp"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'timestamp' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.timestamp}
+                          onChange={(e) => setFilters(f => ({ ...f, timestamp: e.target.value }))}
+                          placeholder="Filter timestamp..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, timestamp: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'timestamp')} />
                   </div>
                 )}
                 {columns.level && (
                   <div className="virtual-cell cell-level resizable-header" style={{ width: columnWidths.level, minWidth: 50 }}>
-                    Level
+                    <span className="header-content">
+                      <span>Level</span>
+                      <span 
+                        className={`filter-icon ${filters.level ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'level')}
+                        title="Filter Level"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'level' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.level}
+                          onChange={(e) => setFilters(f => ({ ...f, level: e.target.value }))}
+                          placeholder="Filter level..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, level: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'level')} />
                   </div>
                 )}
                 {columns.logger && (
                   <div className="virtual-cell cell-logger resizable-header" style={{ width: columnWidths.logger, minWidth: 50 }}>
-                    Logger
+                    <span className="header-content">
+                      <span>Logger</span>
+                      <span 
+                        className={`filter-icon ${filters.logger ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'logger')}
+                        title="Filter Logger"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'logger' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.logger}
+                          onChange={(e) => setFilters(f => ({ ...f, logger: e.target.value }))}
+                          placeholder="Filter logger..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, logger: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'logger')} />
                   </div>
                 )}
                 {columns.filePosition && (
                   <div className="virtual-cell cell-filepos resizable-header" style={{ width: columnWidths.filePosition, minWidth: 50 }}>
-                    File
+                    <span className="header-content">
+                      <span>File</span>
+                      <span 
+                        className={`filter-icon ${filters.filePosition ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'filePosition')}
+                        title="Filter File Position"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'filePosition' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.filePosition}
+                          onChange={(e) => setFilters(f => ({ ...f, filePosition: e.target.value }))}
+                          placeholder="Filter file position..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, filePosition: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filePosition')} />
                   </div>
                 )}
                 {columns.message && (
                   <div className="virtual-cell cell-message resizable-header" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>
-                    Message
+                    <span className="header-content">
+                      <span>Message</span>
+                      <span 
+                        className={`filter-icon ${filters.message ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'message')}
+                        title="Filter Message"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'message' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.message}
+                          onChange={(e) => setFilters(f => ({ ...f, message: e.target.value }))}
+                          placeholder="Filter message..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, message: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'message')} />
                   </div>
                 )}
                 {columns.details && (
                   <div className="virtual-cell cell-details resizable-header" style={{ width: columnWidths.details, minWidth: 50 }}>
-                    Details
+                    <span className="header-content">
+                      <span>Details</span>
+                      <span 
+                        className={`filter-icon ${filters.details ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'details')}
+                        title="Filter Details"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'details' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.details}
+                          onChange={(e) => setFilters(f => ({ ...f, details: e.target.value }))}
+                          placeholder="Filter details..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, details: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'details')} />
                   </div>
                 )}
                 {columns.filename && (
                   <div className="virtual-cell cell-filename resizable-header" style={{ width: columnWidths.filename, minWidth: 50 }}>
-                    Source File
+                    <span className="header-content">
+                      <span>Source File</span>
+                      <span 
+                        className={`filter-icon ${filters.filename ? 'active' : ''}`}
+                        onClick={(e) => handleFilterIconClick(e, 'filename')}
+                        title="Filter Source File"
+                      >⧩</span>
+                    </span>
+                    {activeFilterColumn === 'filename' && (
+                      <div className="filter-popover" ref={filterPopoverRef} onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={filters.filename}
+                          onChange={(e) => setFilters(f => ({ ...f, filename: e.target.value }))}
+                          placeholder="Filter source file..."
+                          autoFocus
+                        />
+                        <button onClick={() => { setFilters(f => ({ ...f, filename: '' })); setActiveFilterColumn(null); }}>Clear</button>
+                      </div>
+                    )}
                     <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filename')} />
                   </div>
                 )}
