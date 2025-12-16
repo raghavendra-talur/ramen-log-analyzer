@@ -620,10 +620,13 @@ function App() {
                   <div className="grouping-key-input" ref={keyDropdownRef}>
                     <input
                       type="text"
-                      value={keySearchFilter || groupByKey}
+                      value={keySearchFilter}
                       onChange={e => {
                         setKeySearchFilter(e.target.value);
                         setShowKeyDropdown(true);
+                        if (e.target.value === '') {
+                          setGroupByKey('');
+                        }
                       }}
                       onFocus={() => setShowKeyDropdown(true)}
                       placeholder="Search for key (e.g., rid, drpc.name)"
@@ -637,7 +640,7 @@ function App() {
                             className={`key-option ${key === groupByKey ? 'selected' : ''}`}
                             onClick={() => {
                               setGroupByKey(key);
-                              setKeySearchFilter('');
+                              setKeySearchFilter(key);
                               setShowKeyDropdown(false);
                             }}
                           >
@@ -655,9 +658,6 @@ function App() {
                       <div className="key-dropdown">
                         <div className="key-option no-results">No matching keys found</div>
                       </div>
-                    )}
-                    {groupByKey && !keySearchFilter && (
-                      <span className="selected-key-badge">Selected: {groupByKey}</span>
                     )}
                   </div>
                 )}
