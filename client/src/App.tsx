@@ -106,7 +106,7 @@ function App() {
   const [containerHeight, setContainerHeight] = useState(500);
   const [wrapText, setWrapText] = useState(false);
   const [groupingEnabled, setGroupingEnabled] = useState(false);
-  const [groupByKey, setGroupByKey] = useState('rid');
+  const [groupByKey, setGroupByKey] = useState('');
   const [groups, setGroups] = useState<LogGroup[]>([]);
   const [ungroupedEntries, setUngroupedEntries] = useState<LogEntry[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
