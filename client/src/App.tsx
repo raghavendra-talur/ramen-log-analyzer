@@ -1043,14 +1043,94 @@ function App() {
                     <div className={`group-entries ${expandedGroups.has(group.keyValue) ? 'expanded' : ''}`}>
                       {expandedGroups.has(group.keyValue) ? (
                         <div className="group-table">
-                          <div className="virtual-header">
-                            {columns.timestamp && <div className="header-cell" style={{ width: columnWidths.timestamp, minWidth: 50 }}>Timestamp</div>}
-                            {columns.level && <div className="header-cell" style={{ width: columnWidths.level, minWidth: 50 }}>Level</div>}
-                            {columns.logger && <div className="header-cell" style={{ width: columnWidths.logger, minWidth: 50 }}>Logger</div>}
-                            {columns.filePosition && <div className="header-cell" style={{ width: columnWidths.filePosition, minWidth: 50 }}>File Position</div>}
-                            {columns.message && <div className="header-cell cell-message" style={{ width: columnWidths.message, minWidth: 50 }}>Message</div>}
-                            {columns.details && <div className="header-cell" style={{ width: columnWidths.details, minWidth: 50 }}>Details</div>}
-                            {columns.filename && <div className="header-cell" style={{ width: columnWidths.filename, minWidth: 50 }}>Source File</div>}
+                          <div 
+                            className="virtual-header resizable-header"
+                            onContextMenu={handleHeaderContextMenu}
+                          >
+                            {columns.timestamp && (
+                              <div className="header-cell" style={{ width: columnWidths.timestamp, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>Timestamp</span>
+                                  <span 
+                                    className={`filter-icon ${filters.timestamp ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'timestamp')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'timestamp')}></div>
+                              </div>
+                            )}
+                            {columns.level && (
+                              <div className="header-cell" style={{ width: columnWidths.level, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>Level</span>
+                                  <span 
+                                    className={`filter-icon ${filters.level ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'level')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'level')}></div>
+                              </div>
+                            )}
+                            {columns.logger && (
+                              <div className="header-cell" style={{ width: columnWidths.logger, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>Logger</span>
+                                  <span 
+                                    className={`filter-icon ${filters.logger ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'logger')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'logger')}></div>
+                              </div>
+                            )}
+                            {columns.filePosition && (
+                              <div className="header-cell" style={{ width: columnWidths.filePosition, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>File Position</span>
+                                  <span 
+                                    className={`filter-icon ${filters.filePosition ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'filePosition')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filePosition')}></div>
+                              </div>
+                            )}
+                            {columns.message && (
+                              <div className="header-cell cell-message" style={{ width: columnWidths.message, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>Message</span>
+                                  <span 
+                                    className={`filter-icon ${filters.message ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'message')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'message')}></div>
+                              </div>
+                            )}
+                            {columns.details && (
+                              <div className="header-cell" style={{ width: columnWidths.details, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>Details</span>
+                                  <span 
+                                    className={`filter-icon ${filters.details ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'details')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'details')}></div>
+                              </div>
+                            )}
+                            {columns.filename && (
+                              <div className="header-cell" style={{ width: columnWidths.filename, minWidth: 50 }}>
+                                <div className="header-content">
+                                  <span>Source File</span>
+                                  <span 
+                                    className={`filter-icon ${filters.filename ? 'active' : ''}`}
+                                    onClick={(e) => handleFilterIconClick(e, 'filename')}
+                                  >⧩</span>
+                                </div>
+                                <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filename')}></div>
+                              </div>
+                            )}
                           </div>
                           {group.allEntries.map((entry, idx) => (
                             <div 
