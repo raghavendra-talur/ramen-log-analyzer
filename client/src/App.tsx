@@ -1235,7 +1235,7 @@ function App() {
                           {group.allEntries.map((entry, idx) => (
                             <div 
                               key={entry.id}
-                              className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''} ${idx === 0 ? 'first-entry' : idx === group.allEntries.length - 1 ? 'last-entry' : 'middle-entry'}`}
+                              className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''} ${idx === 0 ? 'first-entry' : idx === group.allEntries.length - 1 ? 'last-entry' : 'middle-entry'} ${wrapText ? 'wrapped' : ''}`}
                             >
                               {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
                               {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
