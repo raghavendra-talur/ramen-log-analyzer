@@ -896,16 +896,18 @@ body {
 }
 
 .virtual-row.wrapped {
-  min-height: 40px;
-  height: auto;
+  height: 100%;
+  overflow: hidden;
 }
 
 .virtual-row.wrapped .virtual-cell {
   white-space: normal;
   word-wrap: break-word;
   word-break: break-word;
-  overflow: visible;
+  overflow-y: auto;
+  overflow-x: hidden;
   text-overflow: clip;
+  max-height: 100%;
 }
 
 .upload-section-centered {
