@@ -100,7 +100,7 @@ function App() {
   const [jumpToPage, setJumpToPage] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerHeight, setContainerHeight] = useState(500);
-  const [wrapText, setWrapText] = useState(false);
+  const [wrapText, setWrapText] = useState(true);
   const [groupingEnabled, setGroupingEnabled] = useState(false);
   const [groupByKey, setGroupByKey] = useState('');
   const [groups, setGroups] = useState<GroupedResult[]>([]);
