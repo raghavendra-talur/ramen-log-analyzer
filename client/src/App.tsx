@@ -1042,18 +1042,33 @@ function App() {
                     
                     <div className={`group-entries ${expandedGroups.has(group.keyValue) ? 'expanded' : ''}`}>
                       {expandedGroups.has(group.keyValue) ? (
-                        group.allEntries.map((entry, idx) => (
-                          <div 
-                            key={entry.id}
-                            className={`group-entry ${idx === 0 ? 'first-entry' : idx === group.allEntries.length - 1 ? 'last-entry' : 'middle-entry'}`}
-                          >
-                            <span className="entry-timestamp">{entry.Timestamp}</span>
-                            <span className={`entry-level level-${entry.Level}`}>{entry.Level}</span>
-                            <span className="entry-message">{entry.Message}</span>
+                        <div className="group-table">
+                          <div className="virtual-header">
+                            {columns.timestamp && <div className="header-cell" style={{ width: columnWidths.timestamp, minWidth: 50 }}>Timestamp</div>}
+                            {columns.level && <div className="header-cell" style={{ width: columnWidths.level, minWidth: 50 }}>Level</div>}
+                            {columns.logger && <div className="header-cell" style={{ width: columnWidths.logger, minWidth: 50 }}>Logger</div>}
+                            {columns.filePosition && <div className="header-cell" style={{ width: columnWidths.filePosition, minWidth: 50 }}>File Position</div>}
+                            {columns.message && <div className="header-cell cell-message" style={{ width: columnWidths.message, minWidth: 50 }}>Message</div>}
+                            {columns.details && <div className="header-cell" style={{ width: columnWidths.details, minWidth: 50 }}>Details</div>}
+                            {columns.filename && <div className="header-cell" style={{ width: columnWidths.filename, minWidth: 50 }}>Source File</div>}
                           </div>
-                        ))
+                          {group.allEntries.map((entry, idx) => (
+                            <div 
+                              key={entry.id}
+                              className={`virtual-row ${!entry.IsValid ? 'invalid-entry' : ''} ${entry.Level ? `level-${entry.Level}` : ''} ${idx === 0 ? 'first-entry' : idx === group.allEntries.length - 1 ? 'last-entry' : 'middle-entry'}`}
+                            >
+                              {columns.timestamp && <div className="virtual-cell cell-timestamp" style={{ width: columnWidths.timestamp, minWidth: 50 }}>{entry.Timestamp || '-'}</div>}
+                              {columns.level && <div className="virtual-cell cell-level" style={{ width: columnWidths.level, minWidth: 50 }}><strong>{entry.Level || '-'}</strong></div>}
+                              {columns.logger && <div className="virtual-cell cell-logger" style={{ width: columnWidths.logger, minWidth: 50 }}>{entry.Logger || '-'}</div>}
+                              {columns.filePosition && <div className="virtual-cell cell-filepos" style={{ width: columnWidths.filePosition, minWidth: 50 }}>{entry.FilePosition || '-'}</div>}
+                              {columns.message && <div className="virtual-cell cell-message" style={{ width: columnWidths.message, minWidth: 50, flex: 'none' }}>{entry.IsValid ? entry.Message : entry.Raw || entry.ParseError}</div>}
+                              {columns.details && <div className="virtual-cell cell-details" style={{ width: columnWidths.details, minWidth: 50 }}>{entry.DetailsJSON || '-'}</div>}
+                              {columns.filename && <div className="virtual-cell cell-filename" style={{ width: columnWidths.filename, minWidth: 50 }}>{entry.Filename || '-'}</div>}
+                            </div>
+                          ))}
+                        </div>
                       ) : (
-                        <>
+                        <div className="group-preview">
                           <div className="group-entry first-entry">
                             <span className="entry-timestamp">{group.firstEntry.Timestamp}</span>
                             <span className={`entry-level level-${group.firstEntry.Level}`}>{group.firstEntry.Level}</span>
@@ -1069,7 +1084,7 @@ function App() {
                               <span className="entry-message">{group.lastEntry.Message}</span>
                             </div>
                           )}
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
