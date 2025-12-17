@@ -359,6 +359,17 @@ body {
   overflow: hidden;
 }
 
+.table-header {
+  display: flex;
+  background-color: #f8f9fa;
+  font-weight: 600;
+  border-bottom: 2px solid #dee2e6;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  overflow-x: hidden;
+  position: relative;
+}
+
 .virtual-header {
   display: flex;
   background-color: #f8f9fa;
@@ -375,6 +386,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   flex-shrink: 0;
+  position: relative;
 }
 
 .header-cell:last-child {
