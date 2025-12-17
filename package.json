@@ -4,7 +4,8 @@
   "description": "A simple tool for analyzing and visualizing Ramen operator logs. This tool helps in debugging and understanding the behavior of Ramen controllers by providing an intuitive interface for log analysis with advanced filtering and visualization capabilities.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "cd client && npm install && npm run build"
   },
   "keywords": [],
   "author": "",

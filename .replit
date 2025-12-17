@@ -43,6 +43,5 @@ externalPort = 8080
 
 [deployment]
 deploymentTarget = "static"
-run = ["node", "server/dist/index.js"]
-build = ["bash", "-c", "cd client && npm install && npm run build"]
+build = ["sh", "-c", "npm run build"]
 publicDir = "client/dist"
