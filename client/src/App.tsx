@@ -1,5 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { FixedSizeList as List } from 'react-window';
+
+declare const __COMMIT_HASH__: string;
+declare const __COMMIT_DATE__: string;
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -795,6 +798,10 @@ function App() {
               </div>
             </div>
           )}
+
+          <div className="version-info">
+            Version: {__COMMIT_HASH__} ({__COMMIT_DATE__.split(' ')[0]})
+          </div>
         </div>
       ) : (
         <div className="card results-card">
@@ -893,6 +900,9 @@ function App() {
                     <li><strong>Group entries:</strong> Enable "Group by JSON key" and select a key</li>
                     <li><strong>Session persistence:</strong> Sessions are saved and can be resumed</li>
                   </ul>
+                  <div className="help-version">
+                    Version: {__COMMIT_HASH__} ({__COMMIT_DATE__.split(' ')[0]})
+                  </div>
                 </div>
               )}
             </div>
