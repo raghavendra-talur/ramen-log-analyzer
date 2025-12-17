@@ -437,22 +437,6 @@ function App() {
     await processFiles(files);
   }, [processFiles]);
 
-  const loadSampleFile = useCallback(async () => {
-    setLoading(true);
-    setStatus({ type: 'info', message: 'Loading sample file...' });
-
-    try {
-      const response = await fetch('/sample.log');
-      if (!response.ok) throw new Error('Failed to load sample file');
-      const blob = await response.blob();
-      const file = new File([blob], 'sample.log', { type: 'text/plain' });
-      await processFiles([file]);
-    } catch (error) {
-      setStatus({ type: 'error', message: (error as Error).message });
-      setLoading(false);
-    }
-  }, [processFiles]);
-
   const loadSession = async (session: Session) => {
     setLoading(true);
     setStatus({ type: 'info', message: 'Loading session...' });
@@ -770,18 +754,6 @@ function App() {
               {loading ? 'Processing...' : 'Upload & Analyze'}
             </button>
           </form>
-
-          <div className="sample-section">
-            <span className="or-divider">or</span>
-            <button 
-              type="button" 
-              className="sample-btn" 
-              onClick={loadSampleFile}
-              disabled={loading}
-            >
-              Load Sample Log
-            </button>
-          </div>
 
           {parseProgress && (
             <div className="progress-section">

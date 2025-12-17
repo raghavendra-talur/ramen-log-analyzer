@@ -53,37 +53,6 @@ body {
   cursor: not-allowed;
 }
 
-.sample-section {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 15px;
-}
-
-.or-divider {
-  color: #6c757d;
-  font-size: 13px;
-}
-
-.sample-btn {
-  background-color: #6c757d;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.sample-btn:hover {
-  background-color: #5a6268;
-}
-
-.sample-btn:disabled {
-  background-color: #adb5bd;
-  cursor: not-allowed;
-}
-
 .status {
   margin-top: 10px;
   padding: 10px;
