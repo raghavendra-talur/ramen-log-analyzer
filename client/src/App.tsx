@@ -1057,6 +1057,18 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'timestamp')}></div>
+                                {activeFilterColumn === 'timestamp' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <input
+                                      type="text"
+                                      value={filters.timestamp}
+                                      onChange={e => setFilters(f => ({ ...f, timestamp: e.target.value }))}
+                                      placeholder="Filter timestamp..."
+                                      className="filter-input"
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                             {columns.level && (
@@ -1069,6 +1081,24 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'level')}></div>
+                                {activeFilterColumn === 'level' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <select
+                                      value={filters.level}
+                                      onChange={e => setFilters(f => ({ ...f, level: e.target.value }))}
+                                      className="filter-select"
+                                      autoFocus
+                                    >
+                                      <option value="">All Levels</option>
+                                      <option value="TRACE">TRACE</option>
+                                      <option value="DEBUG">DEBUG</option>
+                                      <option value="INFO">INFO</option>
+                                      <option value="WARN">WARN</option>
+                                      <option value="ERROR">ERROR</option>
+                                      <option value="FATAL">FATAL</option>
+                                    </select>
+                                  </div>
+                                )}
                               </div>
                             )}
                             {columns.logger && (
@@ -1081,6 +1111,18 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'logger')}></div>
+                                {activeFilterColumn === 'logger' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <input
+                                      type="text"
+                                      value={filters.logger}
+                                      onChange={e => setFilters(f => ({ ...f, logger: e.target.value }))}
+                                      placeholder="Filter logger..."
+                                      className="filter-input"
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                             {columns.filePosition && (
@@ -1093,6 +1135,18 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filePosition')}></div>
+                                {activeFilterColumn === 'filePosition' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <input
+                                      type="text"
+                                      value={filters.filePosition}
+                                      onChange={e => setFilters(f => ({ ...f, filePosition: e.target.value }))}
+                                      placeholder="Filter file:line..."
+                                      className="filter-input"
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                             {columns.message && (
@@ -1105,6 +1159,18 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'message')}></div>
+                                {activeFilterColumn === 'message' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <input
+                                      type="text"
+                                      value={filters.message}
+                                      onChange={e => setFilters(f => ({ ...f, message: e.target.value }))}
+                                      placeholder="Filter message..."
+                                      className="filter-input"
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                             {columns.details && (
@@ -1117,6 +1183,18 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'details')}></div>
+                                {activeFilterColumn === 'details' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <input
+                                      type="text"
+                                      value={filters.details}
+                                      onChange={e => setFilters(f => ({ ...f, details: e.target.value }))}
+                                      placeholder="Filter JSON details..."
+                                      className="filter-input"
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                             {columns.filename && (
@@ -1129,6 +1207,18 @@ function App() {
                                   >⧩</span>
                                 </div>
                                 <div className="resize-handle" onMouseDown={(e) => handleResizeStart(e, 'filename')}></div>
+                                {activeFilterColumn === 'filename' && (
+                                  <div className="filter-popover" ref={filterPopoverRef}>
+                                    <input
+                                      type="text"
+                                      value={filters.filename}
+                                      onChange={e => setFilters(f => ({ ...f, filename: e.target.value }))}
+                                      placeholder="Filter source file..."
+                                      className="filter-input"
+                                      autoFocus
+                                    />
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1423,34 +1513,6 @@ function App() {
                 )}
               </div>
 
-              {contextMenu && (
-                <div 
-                  className="context-menu"
-                  style={{ left: contextMenu.x, top: contextMenu.y }}
-                >
-                  <div className="context-menu-header">Toggle Columns</div>
-                  {Object.entries(columnLabels).map(([key, label]) => (
-                    <div 
-                      key={key}
-                      className="context-menu-item"
-                      onClick={() => toggleColumn(key as keyof ColumnVisibility)}
-                    >
-                      <span className="context-menu-check">{columns[key as keyof ColumnVisibility] ? '✓' : ''}</span>
-                      {label}
-                    </div>
-                  ))}
-                  <div className="context-menu-divider"></div>
-                  <div className="context-menu-item" onClick={showAllColumns}>
-                    Show All Columns
-                  </div>
-                  <div className="context-menu-divider"></div>
-                  <div className="context-menu-item" onClick={() => setWrapText(!wrapText)}>
-                    <span className="context-menu-check">{wrapText ? '✓' : ''}</span>
-                    Wrap Text
-                  </div>
-                </div>
-              )}
-
               <div 
                 className={`virtual-table ${wrapText ? 'wrap-text' : ''}`}
                 ref={containerRef}
@@ -1465,6 +1527,34 @@ function App() {
                 </List>
               </div>
             </>
+          )}
+
+          {contextMenu && (
+            <div 
+              className="context-menu"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <div className="context-menu-header">Toggle Columns</div>
+              {Object.entries(columnLabels).map(([key, label]) => (
+                <div 
+                  key={key}
+                  className="context-menu-item"
+                  onClick={() => toggleColumn(key as keyof ColumnVisibility)}
+                >
+                  <span className="context-menu-check">{columns[key as keyof ColumnVisibility] ? '✓' : ''}</span>
+                  {label}
+                </div>
+              ))}
+              <div className="context-menu-divider"></div>
+              <div className="context-menu-item" onClick={showAllColumns}>
+                Show All Columns
+              </div>
+              <div className="context-menu-divider"></div>
+              <div className="context-menu-item" onClick={() => setWrapText(!wrapText)}>
+                <span className="context-menu-check">{wrapText ? '✓' : ''}</span>
+                Wrap Text
+              </div>
+            </div>
           )}
 
           {status && (
